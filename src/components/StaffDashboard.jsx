@@ -1,4 +1,4 @@
-import React, { useState, Suspense } from "react";
+import React, { useState, Suspense, useEffect } from "react";
 import {
   Card,
   CardHeader,
@@ -8,6 +8,14 @@ import {
 } from "./ui/card";
 import { Button } from "./ui/button";
 import { LogOut, Plus, Receipt, XCircle } from "lucide-react";
+
+import {
+  saveDailySetup,
+  getDailySetup,
+  getBills,
+  addBill,
+} from "../utils/storage";
+
 const DailySetup = React.lazy(() => import("./DailySetup"));
 const BillingForm = React.lazy(() => import("./BillingForm"));
 
@@ -46,13 +54,25 @@ const StaffDashboard = ({ logout }) => {
   const [bills, setBills] = useState([]);
   const [showBillingForm, setShowBillingForm] = useState(false);
 
+  // Load saved data on component mount
+  useEffect(() => {
+    const savedSetup = getDailySetup();
+    if (savedSetup) {
+      setDailySetup(savedSetup);
+    }
+
+    const savedBills = getBills();
+    setBills(savedBills);
+  }, []);
+
   const handleSetupComplete = (setupData) => {
-    setDailySetup(setupData);
-    setShowBilling(true);
+    const savedSetup = saveDailySetup(setupData);
+    setDailySetup(savedSetup);
   };
 
   const handleBillGenerated = (billData) => {
-    setBills((prevBills) => [billData, ...prevBills]);
+    const newBill = addBill(billData);
+    setBills((prevBills) => [newBill, ...prevBills]);
     setShowBillingForm(false);
   };
 
@@ -116,6 +136,7 @@ const StaffDashboard = ({ logout }) => {
                   <BillingForm
                     rates={dailySetup}
                     onBillGenerate={handleBillGenerated}
+                    onCancel={handleCancelBilling}
                   />
                 </Suspense>
               </div>

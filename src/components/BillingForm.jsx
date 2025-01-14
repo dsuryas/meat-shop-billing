@@ -10,7 +10,7 @@ import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Alert, AlertDescription } from "./ui/alert";
 
-const BillingForm = ({ rates }) => {
+const BillingForm = ({ rates, onCancel, onBillGenerate }) => {
   const [billData, setBillData] = useState({
     customerName: "",
     customerPhone: "",
@@ -46,22 +46,32 @@ const BillingForm = ({ rates }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // Send bill data to parent component
+
+    // Validate required fields
+    if (
+      !billData.customerName ||
+      !billData.customerPhone ||
+      !billData.weight ||
+      !billData.price ||
+      !billData.amountPaid
+    ) {
+      setMessage("Please fill all required fields");
+      return;
+    }
+
     onBillGenerate(billData);
-    setMessage("Bill generated successfully!");
-    setTimeout(() => {
-      setMessage("");
-      setBillData({
-        customerName: "",
-        customerPhone: "",
-        saleType: "retail",
-        productType: "liveChicken",
-        weight: "",
-        price: "",
-        paymentType: "cash",
-        amountPaid: "",
-      });
-    }, 3000);
+
+    // Reset form
+    setBillData({
+      customerName: "",
+      customerPhone: "",
+      saleType: "retail",
+      productType: "liveChicken",
+      weight: "",
+      price: "",
+      paymentType: "cash",
+      amountPaid: "",
+    });
   };
 
   return (
@@ -193,7 +203,7 @@ const BillingForm = ({ rates }) => {
             <Button
               type="button"
               variant="outline"
-              onClick={() => onCancel()}
+              onClick={onCancel}
               className="flex-1"
             >
               Cancel
