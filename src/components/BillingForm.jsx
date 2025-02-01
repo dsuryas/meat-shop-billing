@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardHeader,
@@ -9,35 +9,109 @@ import {
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Alert, AlertDescription } from "./ui/alert";
+import { Select } from "./ui/select";
 
-const BillingForm = ({ rates, onCancel, onBillGenerate }) => {
+const BillingForm = ({
+  rates,
+  billingOption,
+  onBillGenerate,
+  onCancel,
+  editData,
+  weightType,
+  currentStock,
+}) => {
   const [billData, setBillData] = useState({
     customerName: "",
     customerPhone: "",
-    saleType: "retail", // retail, wholesale, deceased
-    productType: "liveChicken", // liveChicken, chickenWithSkin, choppedChicken, countryChicken
+    category: billingOption.type === "base" ? billingOption.id : "additional",
+    productType: "",
     weight: "",
+    numberOfBirds: "",
+    discountPerKg: "",
     price: "",
     paymentType: "cash", // cash, online, partial
     amountPaid: "",
+    balanceAmount: "0",
   });
 
   const [message, setMessage] = useState("");
 
-  const calculatePrice = (productType, weight) => {
-    if (!weight || !rates?.productPrices) return "";
+  useEffect(() => {
+    // If editing, populate form with existing data
+    if (editData) {
+      setBillData(editData);
+    }
+  }, [editData]);
 
-    const pricePerKg = rates.productPrices[productType];
-    return (Number(weight) * Number(pricePerKg)).toFixed(2);
+  const getBasePrice = () => {
+    if (billingOption.type === "base") {
+      switch (billingOption.id) {
+        case "retail":
+          return rates.shopRate;
+        case "wholesale":
+          return rates.paperRate;
+        case "countryChicken":
+          return rates.productPrices.countryChicken;
+        default:
+          return 0;
+      }
+    } else {
+      // For additional products, get price based on retail/wholesale
+      const product = products.find((p) => p.id === billingOption.id);
+      return product
+        ? billData.category === "wholesale"
+          ? product.wholesalePrice
+          : product.retailPrice
+        : 0;
+    }
+  };
+
+  const calculatePrice = (weight, discountPerKg = billData.discountPerKg) => {
+    const basePrice = getBasePrice();
+    const finalRatePerKg = Math.max(
+      0,
+      Number(basePrice) - Number(discountPerKg || 0)
+    );
+    return (Number(weight) * finalRatePerKg).toFixed(2);
   };
 
   const handleInputChange = (field, value) => {
     setBillData((prev) => {
       const newData = { ...prev, [field]: value };
 
-      // Auto-calculate price when weight or product type changes
-      if (field === "weight" || field === "productType") {
-        newData.price = calculatePrice(newData.productType, newData.weight);
+      // Auto-calculate price when weight or discount changes
+      if (field === "weight" || field === "discountPerKg") {
+        const calculatedPrice = calculatePrice(
+          newData.weight,
+          newData.discountPerKg
+        );
+        newData.price = calculatedPrice;
+        // If payment is partial, reset amount paid and balance
+        if (newData.paymentType === "partial") {
+          newData.amountPaid = "";
+          newData.balanceAmount = calculatedPrice;
+        } else {
+          newData.amountPaid = calculatedPrice;
+          newData.balanceAmount = "0";
+        }
+      }
+
+      // Handle payment type changes
+      if (field === "paymentType") {
+        if (value === "partial") {
+          newData.amountPaid = "";
+          newData.balanceAmount = newData.price;
+        } else {
+          newData.amountPaid = newData.price;
+          newData.balanceAmount = "0";
+        }
+      }
+
+      // Calculate balance when amount paid changes
+      if (field === "amountPaid") {
+        newData.balanceAmount = (Number(newData.price) - Number(value)).toFixed(
+          2
+        );
       }
 
       return newData;
@@ -47,45 +121,76 @@ const BillingForm = ({ rates, onCancel, onBillGenerate }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    // Validate required fields
+    // Validation
     if (
       !billData.customerName ||
       !billData.customerPhone ||
       !billData.weight ||
       !billData.price ||
-      !billData.amountPaid
+      !billData.amountPaid ||
+      !billData.numberOfBirds
     ) {
       setMessage("Please fill all required fields");
       return;
     }
 
-    onBillGenerate(billData);
+    if (Number(billData.weight) <= 0) {
+      setMessage("Weight must be greater than 0");
+      return;
+    }
 
-    // Reset form
-    setBillData({
-      customerName: "",
-      customerPhone: "",
-      saleType: "retail",
-      productType: "liveChicken",
-      weight: "",
-      price: "",
-      paymentType: "cash",
-      amountPaid: "",
-    });
+    if (Number(billData.weight) > Number(currentStock)) {
+      setMessage(
+        `Weight cannot exceed current ${weightType} stock (${currentStock}kg)`
+      );
+      return;
+    }
+
+    if (Number(billData.amountPaid) < 0) {
+      setMessage("Amount paid cannot be negative");
+      return;
+    }
+
+    if (
+      billData.paymentType !== "partial" &&
+      Number(billData.amountPaid) !== Number(billData.price)
+    ) {
+      setMessage("Amount paid must equal total price for full payment");
+      return;
+    }
+
+    if (
+      billData.paymentType === "partial" &&
+      Number(billData.amountPaid) >= Number(billData.price)
+    ) {
+      setMessage("Partial payment must be less than total price");
+      return;
+    }
+
+    const billWithMetadata = {
+      ...billData,
+      basePrice: getBasePrice(),
+      productName: billingOption.name,
+      weightType,
+    };
+
+    onBillGenerate(billWithMetadata);
   };
 
   return (
-    <Card className="max-w-2xl mx-auto">
+    <Card>
       <CardHeader>
-        <CardTitle>Generate Bill</CardTitle>
-        <CardDescription>Create a new bill for customer</CardDescription>
+        <CardTitle>Generate Bill - {billingOption.name}</CardTitle>
+        <CardDescription>
+          Base Rate: ₹{getBasePrice()}/kg | Stock Type: {weightType} weight
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Customer Details */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium">Customer Name</label>
+              <label className="text-sm font-medium">Customer Name *</label>
               <Input
                 placeholder="Enter name"
                 value={billData.customerName}
@@ -96,7 +201,7 @@ const BillingForm = ({ rates, onCancel, onBillGenerate }) => {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Phone Number</label>
+              <label className="text-sm font-medium">Phone Number *</label>
               <Input
                 placeholder="Enter phone"
                 value={billData.customerPhone}
@@ -108,41 +213,12 @@ const BillingForm = ({ rates, onCancel, onBillGenerate }) => {
             </div>
           </div>
 
-          {/* Sale Details */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Weight, Birds, Discount and Price */}
+          <div className="grid grid-cols-4 gap-4">
             <div>
-              <label className="text-sm font-medium">Sale Type</label>
-              <select
-                className="w-full mt-1 rounded-md border border-input bg-background px-3 py-2"
-                value={billData.saleType}
-                onChange={(e) => handleInputChange("saleType", e.target.value)}
-              >
-                <option value="retail">Retail</option>
-                <option value="wholesale">Wholesale</option>
-                <option value="deceased">Deceased Stock</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-medium">Product Type</label>
-              <select
-                className="w-full mt-1 rounded-md border border-input bg-background px-3 py-2"
-                value={billData.productType}
-                onChange={(e) =>
-                  handleInputChange("productType", e.target.value)
-                }
-              >
-                <option value="liveChicken">Live Chicken</option>
-                <option value="chickenWithSkin">Chicken with Skin</option>
-                <option value="choppedChicken">Chopped Chicken</option>
-                <option value="countryChicken">Country Chicken</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Weight and Price */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium">Weight (kg)</label>
+              <label className="text-sm font-medium">
+                {weightType} Weight (kg) *
+              </label>
               <Input
                 type="number"
                 step="0.01"
@@ -153,36 +229,68 @@ const BillingForm = ({ rates, onCancel, onBillGenerate }) => {
               />
             </div>
             <div>
+              <label className="text-sm font-medium">Number of Birds *</label>
+              <Input
+                type="number"
+                placeholder="Enter count"
+                value={billData.numberOfBirds}
+                onChange={(e) =>
+                  handleInputChange("numberOfBirds", e.target.value)
+                }
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Discount (₹/kg)</label>
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="Enter discount"
+                value={billData.discountPerKg}
+                onChange={(e) =>
+                  handleInputChange("discountPerKg", e.target.value)
+                }
+                className="mt-1"
+              />
+            </div>
+            <div>
               <label className="text-sm font-medium">Price (₹)</label>
               <Input
                 type="number"
                 step="0.01"
-                placeholder="Total price"
+                placeholder="Auto-calculated"
                 value={billData.price}
-                onChange={(e) => handleInputChange("price", e.target.value)}
-                className="mt-1"
+                readOnly
+                className="mt-1 bg-gray-50"
               />
             </div>
+            {billData.discountPerKg && billData.weight && (
+              <div className="col-span-4 text-sm text-gray-500">
+                Rate after discount: ₹
+                {(getBasePrice() - Number(billData.discountPerKg)).toFixed(2)}
+                /kg
+              </div>
+            )}
           </div>
 
           {/* Payment Details */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium">Payment Type</label>
-              <select
-                className="w-full mt-1 rounded-md border border-input bg-background px-3 py-2"
+              <label className="text-sm font-medium">Payment Type *</label>
+              <Select
                 value={billData.paymentType}
                 onChange={(e) =>
                   handleInputChange("paymentType", e.target.value)
                 }
+                className="mt-1"
               >
                 <option value="cash">Cash</option>
                 <option value="online">Online</option>
                 <option value="partial">Partial</option>
-              </select>
+              </Select>
             </div>
             <div>
-              <label className="text-sm font-medium">Amount Paid</label>
+              <label className="text-sm font-medium">Amount Paid (₹) *</label>
               <Input
                 type="number"
                 step="0.01"
@@ -192,9 +300,20 @@ const BillingForm = ({ rates, onCancel, onBillGenerate }) => {
                   handleInputChange("amountPaid", e.target.value)
                 }
                 className="mt-1"
+                readOnly={billData.paymentType !== "partial"}
               />
             </div>
           </div>
+
+          {/* Balance Display */}
+          {billData.paymentType === "partial" &&
+            Number(billData.balanceAmount) > 0 && (
+              <div className="bg-yellow-50 p-4 rounded-lg">
+                <p className="text-sm text-yellow-700">
+                  Balance Amount: ₹{billData.balanceAmount}
+                </p>
+              </div>
+            )}
 
           <div className="flex gap-4">
             <Button type="submit" className="flex-1">
