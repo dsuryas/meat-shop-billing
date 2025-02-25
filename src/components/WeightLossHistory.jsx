@@ -1,6 +1,6 @@
 import React from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
-import { getDailyClosings, MEAT_CONVERSION_FACTOR } from "../utils/storage";
+import { getDailyClosings } from "../utils/storage";
 
 const WeightLossHistory = () => {
   const closings = getDailyClosings();
@@ -14,6 +14,20 @@ const WeightLossHistory = () => {
       minute: "2-digit",
     });
   };
+
+  // Calculate statistics using the appropriate weight loss value based on estimation method
+  const getWeightLossStats = () => {
+    if (!closings.length) return { average: 0, highest: 0, lowest: 0 };
+
+    const weightLosses = closings.map((c) => Number(c.weightLoss));
+    return {
+      average: weightLosses.reduce((a, b) => a + b, 0) / weightLosses.length,
+      highest: Math.max(...weightLosses),
+      lowest: Math.min(...weightLosses),
+    };
+  };
+
+  const stats = getWeightLossStats();
 
   return (
     <div className="space-y-6">
@@ -105,13 +119,7 @@ const WeightLossHistory = () => {
           <CardContent className="pt-6">
             <div className="text-sm text-red-600 mb-1">Average Weight Loss</div>
             <div className="text-xl font-bold text-red-700">
-              {closings.length > 0
-                ? (
-                    closings.reduce((sum, c) => sum + Number(c.weightLoss), 0) /
-                    closings.length
-                  ).toFixed(2)
-                : 0}
-              kg
+              {stats.average.toFixed(2)}kg
             </div>
           </CardContent>
         </Card>
@@ -122,12 +130,7 @@ const WeightLossHistory = () => {
               Highest Weight Loss
             </div>
             <div className="text-xl font-bold text-amber-700">
-              {closings.length > 0
-                ? Math.max(
-                    ...closings.map((c) => Number(c.weightLoss))
-                  ).toFixed(2)
-                : 0}
-              kg
+              {stats.highest.toFixed(2)}kg
             </div>
           </CardContent>
         </Card>
@@ -138,12 +141,7 @@ const WeightLossHistory = () => {
               Lowest Weight Loss
             </div>
             <div className="text-xl font-bold text-green-700">
-              {closings.length > 0
-                ? Math.min(
-                    ...closings.map((c) => Number(c.weightLoss))
-                  ).toFixed(2)
-                : 0}
-              kg
+              {stats.lowest.toFixed(2)}kg
             </div>
           </CardContent>
         </Card>

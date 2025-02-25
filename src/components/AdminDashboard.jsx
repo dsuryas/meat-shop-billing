@@ -22,13 +22,14 @@ const PriceManagement = React.lazy(() => import("./PriceManagement"));
 const UserManagement = React.lazy(() => import("./UserManagement"));
 const ProductManagement = React.lazy(() => import("./ProductManagement"));
 const Stats = React.lazy(() => import("./Stats"));
+const WeightLossHistory = React.lazy(() => import("./WeightLossHistory"));
 const BillingForm = React.lazy(() => import("./BillingForm"));
 const BillsTable = React.lazy(() => import("./BillsTable"));
 const DayManagement = React.lazy(() => import("./DayManagement"));
 const DailySetup = React.lazy(() => import("./DailySetup"));
 
 const AdminDashboard = ({ logout }) => {
-  const [activeTab, setActiveTab] = useState("home");
+  const [activeTab, setActiveTab] = useState("prices");
   const [bills, setBills] = useState([]);
   const [dailySetup, setDailySetup] = useState(null);
   const [showBillingForm, setShowBillingForm] = useState(false);
@@ -36,9 +37,25 @@ const AdminDashboard = ({ logout }) => {
   const [editingBill, setEditingBill] = useState(null);
   const [showSetup, setShowSetup] = useState(false);
 
+  const TABS = [
+    { id: "home", label: "Home" },
+    { id: "prices", label: "Prices" },
+    { id: "products", label: "Products" },
+    { id: "users", label: "Users" },
+    { id: "stats", label: "Stats" },
+    { id: "weight-loss", label: "Weight Loss" },
+  ];
+
   useEffect(() => {
     loadDailyData();
   }, []);
+
+  useEffect(() => {
+    // Set active tab to home when daily setup is loaded
+    if (dailySetup) {
+      setActiveTab("home");
+    }
+  }, [dailySetup]);
 
   const loadDailyData = () => {
     const setup = getDailySetup();
@@ -161,7 +178,26 @@ const AdminDashboard = ({ logout }) => {
       .reduce((total, bill) => total + Number(bill.price || 0), 0);
   };
 
-  // Early return for dashboard with Start Day button when no setup exists
+  const renderTabs = () => (
+    <div className="px-4 border-b border-gray-200">
+      <nav className="-mb-px flex space-x-8">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === tab.id
+                ? "border-blue-500 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+
   if (!dailySetup) {
     return (
       <div className="min-h-screen bg-gray-100">
@@ -173,40 +209,7 @@ const AdminDashboard = ({ logout }) => {
               Logout
             </Button>
           </div>
-
-          {/* Keep admin tabs visible even without setup */}
-          <div className="px-4 border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8">
-              {["home", "prices", "products", "users", "stats"].map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === tab
-                      ? "border-blue-500 text-blue-600"
-                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                  }`}
-                >
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                </button>
-              ))}
-              weight-loss"].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === tab
-                    ? "border-blue-500 text-blue-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }`}
-              >
-                {tab === "weight-loss"
-                  ? "Weight Loss"
-                  : tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-              ))}
-            </nav>
-          </div>
+          {renderTabs()}
         </div>
 
         <div className="p-6">
@@ -230,7 +233,6 @@ const AdminDashboard = ({ logout }) => {
               </CardContent>
             </Card>
           ) : (
-            // Show other tabs content even without daily setup
             <>
               {activeTab === "prices" && (
                 <Suspense fallback={<div>Loading...</div>}>
@@ -245,6 +247,11 @@ const AdminDashboard = ({ logout }) => {
               {activeTab === "users" && (
                 <Suspense fallback={<div>Loading...</div>}>
                   <UserManagement />
+                </Suspense>
+              )}
+              {activeTab === "stats" && (
+                <Suspense fallback={<div>Loading...</div>}>
+                  <Stats />
                 </Suspense>
               )}
               {activeTab === "weight-loss" && (
@@ -285,23 +292,7 @@ const AdminDashboard = ({ logout }) => {
         </div>
 
         {/* Tabs */}
-        <div className="px-4 border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
-            {["home", "prices", "products", "users", "stats"].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === tab
-                    ? "border-blue-500 text-blue-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }`}
-              >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            ))}
-          </nav>
-        </div>
+        {renderTabs()}
       </div>
 
       <div className="p-6">
@@ -389,6 +380,15 @@ const AdminDashboard = ({ logout }) => {
                 dailySetup={dailySetup}
                 onStartNewDay={handleStartNewDay}
                 currentStock={getRemainingStock()}
+                remainingBirds={getRemainingBirds()}
+                currentEarnings={getCurrentEarnings()}
+                estimatedEarnings={dailySetup.estimatedEarnings}
+                totalDiscounts={bills.reduce(
+                  (total, bill) =>
+                    total +
+                    Number(bill.discountPerKg || 0) * Number(bill.weight || 0),
+                  0
+                )}
               />
             </Suspense>
 
@@ -451,6 +451,12 @@ const AdminDashboard = ({ logout }) => {
         {activeTab === "stats" && (
           <Suspense fallback={<div>Loading...</div>}>
             <Stats />
+          </Suspense>
+        )}
+
+        {activeTab === "weight-loss" && (
+          <Suspense fallback={<div>Loading...</div>}>
+            <WeightLossHistory />
           </Suspense>
         )}
       </div>
