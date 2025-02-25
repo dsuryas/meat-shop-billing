@@ -304,6 +304,9 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
               <div>
                 <label className="text-sm font-medium">
                   Chopped Chicken (₹/kg)
+                  <span className="text-xs text-gray-500 ml-2">
+                    (Shop rate)
+                  </span>
                 </label>
                 <Input
                   type="number"
@@ -375,7 +378,7 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
           </div>
 
           {/* Summary Information */}
-          {setupData.freshStock !== "" && setupData.remainingStock !== "" && (
+          {/* {setupData.freshStock !== "" && setupData.remainingStock !== "" && (
             <div className="mt-4 p-4 bg-green-50 rounded-lg space-y-2">
               <h3 className="text-lg font-semibold text-green-700">Summary</h3>
               <div className="space-y-1 text-sm text-green-600">
@@ -412,7 +415,7 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
                 ) : null}
               </div>
             </div>
-          )}
+          )} */}
 
           {/* Summary Information */}
           {setupData.freshStock !== "" &&

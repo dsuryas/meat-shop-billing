@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Calendar, PieChart, TrendingUp, Clock } from "lucide-react";
-import { getClosedDay, saveDailyClosing } from "../utils/storage";
+import { getDailyClosings, saveDailyClosing } from "../utils/storage";
 const CloseDayModal = React.lazy(() => import("./CloseDayModal"));
 
 const DayManagement = ({
@@ -30,17 +30,26 @@ const DayManagement = ({
   const [showCloseDayModal, setShowCloseDayModal] = useState(false);
 
   useEffect(() => {
-    // Check if day is already closed
-    const closedDay = getClosedDay();
-    if (closedDay) {
-      setIsDayClosed(true);
-      setDayReport(closedDay);
-    }
-  }, []);
+    if (!dailySetup?.date) return;
 
-  const handleCloseDay = () => {
-    setShowCloseDayModal(true);
-  };
+    // Get all daily closings
+    const dailyClosings = getDailyClosings();
+    if (dailyClosings && dailyClosings.length > 0) {
+      // Find report for current setup date
+      const setupDate = new Date(dailySetup.date).toDateString();
+      const currentDayReport = dailyClosings.find(
+        (report) => new Date(report.date).toDateString() === setupDate
+      );
+
+      if (currentDayReport) {
+        setIsDayClosed(true);
+        setDayReport(currentDayReport);
+      } else {
+        setIsDayClosed(false);
+        setDayReport(null);
+      }
+    }
+  }, [dailySetup?.date]);
 
   const handleCloseDayConfirmed = async (closingData) => {
     const saved = await saveDailyClosing(closingData);
@@ -61,22 +70,7 @@ const DayManagement = ({
 
   return (
     <div className="space-y-6">
-      {!isDayClosed ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Close Current Day</CardTitle>
-            <CardDescription>
-              Generate final report and close the current business day
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={handleCloseDay} className="w-full">
-              <Clock className="mr-2 h-4 w-4" />
-              Close Day
-            </Button>
-          </CardContent>
-        </Card>
-      ) : dayReport ? (
+      {dayReport ? (
         <div className="space-y-6">
           <Card>
             <CardHeader>

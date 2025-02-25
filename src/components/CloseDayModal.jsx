@@ -46,29 +46,41 @@ const CloseDayModal = ({
       return;
     }
 
-    // Calculate both meat and live weight metrics
+    // Calculate weight loss based on estimation method
     const expectedStock = Number(currentStock);
     const remainingStock = Number(actualStock);
+    let weightLoss = expectedStock - remainingStock;
+    let weightLossPercentage = (weightLoss / expectedStock) * 100;
 
-    // Meat weight calculations
-    const meatWeightLoss = expectedStock - remainingStock;
-    const meatWeightLossPercentage = (meatWeightLoss / expectedStock) * 100;
-
-    // Live weight calculations
-    const liveWeightLoss = meatWeightLoss * MEAT_CONVERSION_FACTOR;
-    const expectedLiveWeight = expectedStock * MEAT_CONVERSION_FACTOR;
-    const liveWeightLossPercentage =
-      (liveWeightLoss / expectedLiveWeight) * 100;
+    // Only convert between meat and live weight if needed
+    let convertedWeightLoss = weightLoss;
+    if (dailySetup.estimationMethod === "liveRate") {
+      // If using live rate, store both but use live weight as primary
+      convertedWeightLoss = weightLoss / MEAT_CONVERSION_FACTOR;
+    } else {
+      // If using meat weight (skinOutRate), convert to live weight
+      convertedWeightLoss = weightLoss * MEAT_CONVERSION_FACTOR;
+    }
 
     const closingData = {
       date: new Date().toISOString(),
+
       // Stock metrics
       expectedStock: expectedStock,
       actualStock: remainingStock,
-      meatWeightLoss: meatWeightLoss.toFixed(2),
-      liveWeightLoss: liveWeightLoss.toFixed(2),
-      meatWeightLossPercentage: meatWeightLossPercentage.toFixed(2),
-      liveWeightLossPercentage: liveWeightLossPercentage.toFixed(2),
+      weightLoss: weightLoss.toFixed(2),
+      weightLossPercentage: weightLossPercentage.toFixed(2),
+      estimationMethod: dailySetup.estimationMethod,
+
+      // Store both weight measurements for reference
+      liveWeightLoss:
+        dailySetup.estimationMethod === "liveRate"
+          ? weightLoss.toFixed(2)
+          : convertedWeightLoss.toFixed(2),
+      meatWeightLoss:
+        dailySetup.estimationMethod === "liveRate"
+          ? convertedWeightLoss.toFixed(2)
+          : weightLoss.toFixed(2),
 
       // Bird metrics
       expectedBirds: expectedBirds,
@@ -80,7 +92,6 @@ const CloseDayModal = ({
       ).toFixed(2),
 
       // System info
-      estimationMethod: dailySetup.estimationMethod,
       dailySetupId: dailySetup.id || Date.now(),
 
       // Financial data

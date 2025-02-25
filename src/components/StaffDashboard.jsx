@@ -17,6 +17,7 @@ import {
   isDaySetupValid,
   clearDaySetup,
   MEAT_CONVERSION_FACTOR,
+  saveDailyClosing,
 } from "../utils/storage";
 
 const DailySetup = React.lazy(() => import("./DailySetup"));
@@ -24,6 +25,7 @@ const BillingForm = React.lazy(() => import("./BillingForm"));
 const BillingOptions = React.lazy(() => import("./BillingOptions"));
 const BillsTable = React.lazy(() => import("./BillsTable"));
 const DayManagement = React.lazy(() => import("./DayManagement"));
+const CloseDayModal = React.lazy(() => import("./CloseDayModal"));
 
 const StaffDashboard = ({ logout }) => {
   const [dailySetup, setDailySetup] = useState(null);
@@ -32,6 +34,24 @@ const StaffDashboard = ({ logout }) => {
   const [bills, setBills] = useState([]);
   const [editingBill, setEditingBill] = useState(null);
   const [showSetup, setShowSetup] = useState(false);
+  const [showCloseDayModal, setShowCloseDayModal] = useState(false);
+
+  // Handler functions
+  const handleLogout = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log("Logout clicked");
+    if (typeof logout === "function") {
+      logout();
+    }
+  };
+
+  const handleCloseDayClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log("Close day clicked");
+    setShowCloseDayModal(true);
+  };
 
   // Load initial data
   useEffect(() => {
@@ -249,10 +269,21 @@ const StaffDashboard = ({ logout }) => {
       <div className="bg-white shadow">
         <div className="p-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold">Staff Dashboard</h1>
-          <Button variant="outline" onClick={logout}>
-            <LogOut className="mr-2 h-4 w-4" />
-            Logout
-          </Button>
+          <div className="flex space-x-4">
+            {dailySetup && (
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={handleCloseDayClick}
+              >
+                Close Day
+              </Button>
+            )}
+            <Button variant="outline" type="button" onClick={handleLogout}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Logout
+            </Button>
+          </div>
         </div>
 
         {/* Summary Stats */}
@@ -352,8 +383,8 @@ const StaffDashboard = ({ logout }) => {
                 onStartNewDay={handleStartNewDay}
                 currentStock={getRemainingStock()}
                 remainingBirds={getRemainingBirds()}
-                currentEarnings={getCurrentEarnings()}
                 estimatedEarnings={dailySetup.estimatedEarnings}
+                currentEarnings={getCurrentEarnings()}
                 totalDiscounts={bills.reduce(
                   (total, bill) =>
                     total +
@@ -381,6 +412,37 @@ const StaffDashboard = ({ logout }) => {
           </div>
         )}
       </div>
+
+      {showCloseDayModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="max-w-md w-full">
+            <Suspense fallback={<div>Loading...</div>}>
+              <CloseDayModal
+                dailySetup={dailySetup}
+                currentStock={getRemainingStock()}
+                expectedBirds={getRemainingBirds()}
+                currentEarnings={getCurrentEarnings()}
+                estimatedEarnings={dailySetup.estimatedEarnings}
+                totalDiscounts={bills.reduce(
+                  (total, bill) =>
+                    total +
+                    Number(bill.discountPerKg || 0) * Number(bill.weight || 0),
+                  0
+                )}
+                onClose={() => setShowCloseDayModal(false)}
+                onConfirm={async (closingData) => {
+                  const saved = await saveDailyClosing(closingData);
+                  if (saved) {
+                    await clearDaySetup();
+                    window.location.reload();
+                  }
+                  setShowCloseDayModal(false);
+                }}
+              />
+            </Suspense>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
