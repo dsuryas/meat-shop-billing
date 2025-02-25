@@ -1,11 +1,5 @@
 import React, { useState, useEffect, Suspense } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "./ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
 import { Button } from "./ui/button";
 import { LogOut } from "lucide-react";
 import {
@@ -101,9 +95,7 @@ const StaffDashboard = ({ logout }) => {
         lastModified: new Date().toISOString(),
       };
       updateBill(updatedBill);
-      setBills((prev) =>
-        prev.map((bill) => (bill.id === updatedBill.id ? updatedBill : bill))
-      );
+      setBills((prev) => prev.map((bill) => (bill.id === updatedBill.id ? updatedBill : bill)));
     } else {
       // Add new bill
       const newBill = {
@@ -139,32 +131,40 @@ const StaffDashboard = ({ logout }) => {
   // Calculation utilities
   const getTotalInitialStock = () => {
     if (!dailySetup) return 0;
-    const liveWeight =
-      Number(dailySetup.freshStock || 0) +
-      Number(dailySetup.remainingStock || 0);
-    return dailySetup.estimationMethod === "liveRate"
-      ? liveWeight
-      : (liveWeight / MEAT_CONVERSION_FACTOR).toFixed(2);
+    const liveWeight = Number(dailySetup.freshStock || 0) + Number(dailySetup.remainingStock || 0);
+
+    return dailySetup.estimationMethod === "liveRate" ? liveWeight : (liveWeight / MEAT_CONVERSION_FACTOR).toFixed(2);
   };
+
+  // const getSoldStock = () => {
+  //   if (!Array.isArray(bills)) return 0;
+
+  //   return bills
+  //     .reduce((total, bill) => {
+  //       const weight = Number(bill?.weight || 0);
+  //       if (
+  //         dailySetup.estimationMethod === "liveRate" &&
+  //         bill.weightType === "meat"
+  //       ) {
+  //         return total + weight * MEAT_CONVERSION_FACTOR;
+  //       } else if (
+  //         dailySetup.estimationMethod === "skinOutRate" &&
+  //         bill.weightType === "live"
+  //       ) {
+  //         return total + weight / MEAT_CONVERSION_FACTOR;
+  //       }
+  //       return total + weight;
+  //     }, 0)
+  //     .toFixed(2);
+  // };
 
   const getSoldStock = () => {
     if (!Array.isArray(bills)) return 0;
 
     return bills
       .reduce((total, bill) => {
-        const weight = Number(bill?.weight || 0);
-        if (
-          dailySetup.estimationMethod === "liveRate" &&
-          bill.weightType === "meat"
-        ) {
-          return total + weight * MEAT_CONVERSION_FACTOR;
-        } else if (
-          dailySetup.estimationMethod === "skinOutRate" &&
-          bill.weightType === "live"
-        ) {
-          return total + weight / MEAT_CONVERSION_FACTOR;
-        }
-        return total + weight;
+        // Use inventoryWeight directly for accurate stock tracking
+        return total + Number(bill.inventoryWeight || 0);
       }, 0)
       .toFixed(2);
   };
@@ -180,36 +180,25 @@ const StaffDashboard = ({ logout }) => {
   };
 
   const getTotalBirds = () => {
-    return bills.reduce(
-      (total, bill) => total + Number(bill?.numberOfBirds || 0),
-      0
-    );
+    return bills.reduce((total, bill) => total + Number(bill?.numberOfBirds || 0), 0);
   };
 
   const getRemainingBirds = () => {
     if (!dailySetup) return 0;
-    const totalInitialBirds =
-      Number(dailySetup.freshBirds || 0) +
-      Number(dailySetup.remainingBirds || 0);
+    const totalInitialBirds = Number(dailySetup.freshBirds || 0) + Number(dailySetup.remainingBirds || 0);
     return totalInitialBirds - getTotalBirds();
   };
 
   const getRetailSales = () => {
-    return bills
-      .filter((bill) => bill.category === "retail")
-      .reduce((total, bill) => total + Number(bill.price || 0), 0);
+    return bills.filter((bill) => bill.category === "retail").reduce((total, bill) => total + Number(bill.price || 0), 0);
   };
 
   const getWholesaleSales = () => {
-    return bills
-      .filter((bill) => bill.category === "wholesale")
-      .reduce((total, bill) => total + Number(bill.price || 0), 0);
+    return bills.filter((bill) => bill.category === "wholesale").reduce((total, bill) => total + Number(bill.price || 0), 0);
   };
 
   const getStockLabel = () => {
-    return dailySetup?.estimationMethod === "liveRate"
-      ? "Live weight"
-      : "Meat weight";
+    return dailySetup?.estimationMethod === "liveRate" ? "Live weight" : "Meat weight";
   };
 
   // Early return for dashboard with Start Day button when no setup exists
@@ -230,17 +219,11 @@ const StaffDashboard = ({ logout }) => {
           <Card>
             <CardHeader>
               <CardTitle>Start New Day</CardTitle>
-              <CardDescription>
-                Initialize daily operations by setting up today's rates and
-                stock
-              </CardDescription>
+              <CardDescription>Initialize daily operations by setting up today's rates and stock</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="text-center">
-                <p className="text-gray-500 mb-4">
-                  No active daily setup found. Start a new day to begin
-                  operations.
-                </p>
+                <p className="text-gray-500 mb-4">No active daily setup found. Start a new day to begin operations.</p>
                 <Button onClick={() => setShowSetup(true)}>Start Day</Button>
               </div>
             </CardContent>
@@ -251,10 +234,7 @@ const StaffDashboard = ({ logout }) => {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
               <Suspense fallback={<div>Loading...</div>}>
-                <DailySetup
-                  onSetupComplete={handleSetupComplete}
-                  onCancel={() => setShowSetup(false)}
-                />
+                <DailySetup onSetupComplete={handleSetupComplete} onCancel={() => setShowSetup(false)} />
               </Suspense>
             </div>
           </div>
@@ -271,11 +251,7 @@ const StaffDashboard = ({ logout }) => {
           <h1 className="text-2xl font-bold">Staff Dashboard</h1>
           <div className="flex space-x-4">
             {dailySetup && (
-              <Button
-                variant="secondary"
-                type="button"
-                onClick={handleCloseDayClick}
-              >
+              <Button variant="secondary" type="button" onClick={handleCloseDayClick}>
                 Close Day
               </Button>
             )}
@@ -291,43 +267,33 @@ const StaffDashboard = ({ logout }) => {
           {/* Today's Stock */}
           <div className="bg-blue-50 p-4 rounded-lg">
             <div className="text-sm text-blue-600 mb-1">Today's Stock</div>
-            <div className="text-xl font-bold text-blue-700">
-              {getTotalInitialStock()}kg
-            </div>
+            <div className="text-xl font-bold text-blue-700">{getTotalInitialStock()}kg</div>
             <div className="text-sm text-blue-600 mt-1">{getStockLabel()}</div>
           </div>
 
           {/* Current Stock */}
           <div className="bg-green-50 p-4 rounded-lg">
             <div className="text-sm text-green-600 mb-1">Current Stock</div>
-            <div className="text-xl font-bold text-green-700">
-              {getRemainingStock()}kg
-            </div>
+            <div className="text-xl font-bold text-green-700">{getRemainingStock()}kg</div>
             <div className="text-sm text-green-600 mt-1">{getStockLabel()}</div>
           </div>
 
           {/* Shop Rate */}
           <div className="bg-purple-50 p-4 rounded-lg">
             <div className="text-sm text-purple-600 mb-1">Shop Rate</div>
-            <div className="text-xl font-bold text-purple-700">
-              ₹{dailySetup?.shopRate}/kg
-            </div>
+            <div className="text-xl font-bold text-purple-700">₹{dailySetup?.shopRate}/kg</div>
           </div>
 
           {/* Paper Rate */}
           <div className="bg-orange-50 p-4 rounded-lg">
             <div className="text-sm text-orange-600 mb-1">Paper Rate</div>
-            <div className="text-xl font-bold text-orange-700">
-              ₹{dailySetup?.paperRate}/kg
-            </div>
+            <div className="text-xl font-bold text-orange-700">₹{dailySetup?.paperRate}/kg</div>
           </div>
 
           {/* Total Sales */}
           <div className="bg-rose-50 p-4 rounded-lg">
             <div className="text-sm text-rose-600 mb-1">Total Sales</div>
-            <div className="text-xl font-bold text-rose-700">
-              ₹{getCurrentEarnings().toFixed(2)}
-            </div>
+            <div className="text-xl font-bold text-rose-700">₹{getCurrentEarnings().toFixed(2)}</div>
             <div className="grid grid-cols-2 gap-1 text-xs text-rose-600 mt-1">
               <div>R: ₹{getRetailSales().toFixed(2)}</div>
               <div>W: ₹{getWholesaleSales().toFixed(2)}</div>
@@ -337,12 +303,8 @@ const StaffDashboard = ({ logout }) => {
           {/* Stock Sold */}
           <div className="bg-yellow-50 p-4 rounded-lg">
             <div className="text-sm text-yellow-600 mb-1">Stock Sold</div>
-            <div className="text-xl font-bold text-yellow-700">
-              {getSoldStock()}kg
-            </div>
-            <div className="text-sm text-yellow-600 mt-1">
-              {getTotalBirds()} birds
-            </div>
+            <div className="text-xl font-bold text-yellow-700">{getSoldStock()}kg</div>
+            <div className="text-sm text-yellow-600 mt-1">{getTotalBirds()} birds</div>
           </div>
         </div>
       </div>
@@ -353,8 +315,7 @@ const StaffDashboard = ({ logout }) => {
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-semibold">
-                {editingBill ? "Edit Bill" : "New Bill"} -{" "}
-                {selectedBillingOption.name}
+                {editingBill ? "Edit Bill" : "New Bill"} - {selectedBillingOption.name}
               </h2>
               <Button variant="ghost" onClick={handleCancelBilling}>
                 Cancel
@@ -367,9 +328,7 @@ const StaffDashboard = ({ logout }) => {
                 onBillGenerate={handleBillGenerated}
                 onCancel={handleCancelBilling}
                 editData={editingBill}
-                weightType={
-                  dailySetup.estimationMethod === "liveRate" ? "live" : "meat"
-                }
+                weightType={dailySetup.estimationMethod === "liveRate" ? "live" : "meat"}
                 currentStock={getRemainingStock()}
               />
             </Suspense>
@@ -385,12 +344,7 @@ const StaffDashboard = ({ logout }) => {
                 remainingBirds={getRemainingBirds()}
                 estimatedEarnings={dailySetup.estimatedEarnings}
                 currentEarnings={getCurrentEarnings()}
-                totalDiscounts={bills.reduce(
-                  (total, bill) =>
-                    total +
-                    Number(bill.discountPerKg || 0) * Number(bill.weight || 0),
-                  0
-                )}
+                totalDiscounts={bills.reduce((total, bill) => total + Number(bill.discountPerKg || 0) * Number(bill.weight || 0), 0)}
               />
             </Suspense>
 
@@ -403,11 +357,7 @@ const StaffDashboard = ({ logout }) => {
             </Suspense>
 
             <Suspense fallback={<div>Loading...</div>}>
-              <BillsTable
-                bills={bills}
-                onEditBill={handleEditBill}
-                isAdmin={false}
-              />
+              <BillsTable bills={bills} onEditBill={handleEditBill} isAdmin={false} />
             </Suspense>
           </div>
         )}
@@ -423,12 +373,7 @@ const StaffDashboard = ({ logout }) => {
                 expectedBirds={getRemainingBirds()}
                 currentEarnings={getCurrentEarnings()}
                 estimatedEarnings={dailySetup.estimatedEarnings}
-                totalDiscounts={bills.reduce(
-                  (total, bill) =>
-                    total +
-                    Number(bill.discountPerKg || 0) * Number(bill.weight || 0),
-                  0
-                )}
+                totalDiscounts={bills.reduce((total, bill) => total + Number(bill.discountPerKg || 0) * Number(bill.weight || 0), 0)}
                 onClose={() => setShowCloseDayModal(false)}
                 onConfirm={async (closingData) => {
                   const saved = await saveDailyClosing(closingData);

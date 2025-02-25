@@ -68,15 +68,9 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
 
     // Only convert to meat weight if product type is meat for retail broilers
     if (billingOption.id === "retail" && productType === "meat") {
-      calculatedWeight = calculatedWeight / MEAT_CONVERSION_FACTOR;
+      // rounding to 2 decimals
+      calculatedWeight = Math.round((calculatedWeight / MEAT_CONVERSION_FACTOR) * 100) / 100;
     }
-
-    console.log("Calculated price:", {
-      calculatedWeight,
-      basePrice,
-      billingOption,
-      productType: billData.productType,
-    });
 
     return (calculatedWeight * finalRatePerKg).toFixed(2);
   };
@@ -141,8 +135,15 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
       return;
     }
 
-    if (Number(billData.weight) > Number(currentStock)) {
-      setMessage(`Weight cannot exceed current stock (${currentStock}kg)`);
+    // Convert weight for stock validation if weightType is meat
+    let weightForStockValidation = Number(billData.weight);
+    if (weightType === "meat") {
+      // Always convert live weight to meat weight for stock comparison
+      weightForStockValidation = weightForStockValidation / MEAT_CONVERSION_FACTOR;
+    }
+
+    if (weightForStockValidation > Number(currentStock)) {
+      setMessage(`Weight cannot exceed current stock (${currentStock}kg ${weightType} weight)`);
       return;
     }
 
@@ -166,6 +167,9 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
       basePrice: getBasePrice(),
       productName: billingOption.name,
       weightType,
+      // Store the raw weight (live weight) and also the weight appropriate for inventory deduction
+      rawWeight: Number(billData.weight),
+      inventoryWeight: weightType === "meat" ? Number(billData.weight) / MEAT_CONVERSION_FACTOR : Number(billData.weight),
     };
 
     onBillGenerate(billWithMetadata);
@@ -221,10 +225,8 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
           <div className="grid grid-cols-4 gap-4">
             <div>
               <label className="text-sm font-medium">
-                Weight (kg) *
-                {billingOption.id === "retail" && billData.productType === "meat" && (
-                  <span className="text-xs text-gray-500 ml-2">(Meat weight: {(Number(billData.weight || 0) / MEAT_CONVERSION_FACTOR).toFixed(2)} kg)</span>
-                )}
+                Live weight (kg) *
+                <span className="text-xs text-gray-500 ml-2">(Meat weight: {(Number(billData.weight || 0) / MEAT_CONVERSION_FACTOR).toFixed(2)} kg)</span>
               </label>
               <Input
                 type="number"
