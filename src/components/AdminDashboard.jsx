@@ -14,9 +14,10 @@ const BillsTable = React.lazy(() => import("./BillsTable"));
 const DayManagement = React.lazy(() => import("./DayManagement"));
 const DailySetup = React.lazy(() => import("./DailySetup"));
 const RegularCustomerForm = React.lazy(() => import("./RegularCustomerForm"));
+const DashboardSummary = React.lazy(() => import("./DashboardSummary"));
 
 const AdminDashboard = ({ logout }) => {
-  const [activeTab, setActiveTab] = useState("prices");
+  const [activeTab, setActiveTab] = useState("home");
   const [bills, setBills] = useState([]);
   const [dailySetup, setDailySetup] = useState(null);
   const [showBillingForm, setShowBillingForm] = useState(false);
@@ -97,34 +98,56 @@ const AdminDashboard = ({ logout }) => {
   // Calculation utilities
   const getTotalInitialStock = () => {
     if (!dailySetup) return 0;
-    const liveWeight = Number(dailySetup.freshStock || 0) + Number(dailySetup.remainingStock || 0);
-    return dailySetup.estimationMethod === "liveRate" ? liveWeight : (liveWeight / MEAT_CONVERSION_FACTOR).toFixed(2);
+    return Number(dailySetup.freshStock || 0) + Number(dailySetup.remainingStock || 0);
   };
 
-  const getSoldStock = () => {
+  const getTotalInitialStockInMeatWeight = () => {
+    if (!dailySetup) return 0;
+    return (getTotalInitialStock() / MEAT_CONVERSION_FACTOR).toFixed(3);
+  };
+
+  const getSoldStockLiveWeight = () => {
     if (!Array.isArray(bills)) return 0;
 
     return bills
       .reduce((total, bill) => {
-        const weight = Number(bill?.weight || 0);
-        if (dailySetup.estimationMethod === "liveRate" && bill.weightType === "meat") {
-          return total + weight * MEAT_CONVERSION_FACTOR;
-        } else if (dailySetup.estimationMethod === "skinOutRate" && bill.weightType === "live") {
-          return total + weight / MEAT_CONVERSION_FACTOR;
+        // For bills with weightType "meat", convert to live weight
+        if (bill.weightType === "meat") {
+          return total + Number(bill.inventoryWeight || 0) * MEAT_CONVERSION_FACTOR;
         }
-        return total + weight;
+        return total + Number(bill.inventoryWeight || 0);
       }, 0)
-      .toFixed(2);
+      .toFixed(3);
   };
 
-  const getRemainingStock = () => {
-    const totalStock = getTotalInitialStock();
-    const sold = getSoldStock();
-    return Math.max(0, Number(totalStock) - Number(sold)).toFixed(2);
+  const getSoldStockMeatWeight = () => {
+    if (!Array.isArray(bills)) return 0;
+
+    return bills
+      .reduce((total, bill) => {
+        // For bills with weightType "live", convert to meat weight
+        if (bill.weightType === "live") {
+          return total + Number(bill.inventoryWeight || 0) / MEAT_CONVERSION_FACTOR;
+        }
+        return total + Number(bill.inventoryWeight || 0);
+      }, 0)
+      .toFixed(3);
+  };
+
+  const getRemainingStockLiveWeight = () => {
+    const totalLive = getTotalInitialStock();
+    const soldLive = getSoldStockLiveWeight();
+    return Math.max(0, Number(totalLive) - Number(soldLive)).toFixed(3);
+  };
+
+  const getRemainingStockMeatWeight = () => {
+    const totalMeat = getTotalInitialStockInMeatWeight();
+    const soldMeat = getSoldStockMeatWeight();
+    return Math.max(0, Number(totalMeat) - Number(soldMeat)).toFixed(2);
   };
 
   const getCurrentEarnings = () => {
-    return bills.reduce((total, bill) => total + Number(bill?.price || 0), 0);
+    return bills.reduce((total, bill) => total + Number(bill?.price || 0), 0).toFixed(2);
   };
 
   const getTotalBirds = () => {
@@ -138,11 +161,17 @@ const AdminDashboard = ({ logout }) => {
   };
 
   const getRetailSales = () => {
-    return bills.filter((bill) => bill.category === "retail").reduce((total, bill) => total + Number(bill.price || 0), 0);
+    return bills
+      .filter((bill) => bill.category === "retail")
+      .reduce((total, bill) => total + Number(bill.price || 0), 0)
+      .toFixed(2);
   };
 
   const getWholesaleSales = () => {
-    return bills.filter((bill) => bill.category === "wholesale").reduce((total, bill) => total + Number(bill.price || 0), 0);
+    return bills
+      .filter((bill) => bill.category === "wholesale")
+      .reduce((total, bill) => total + Number(bill.price || 0), 0)
+      .toFixed(2);
   };
 
   const renderTabs = () => (
@@ -259,68 +288,32 @@ const AdminDashboard = ({ logout }) => {
       <div className="p-6">
         {activeTab === "home" && dailySetup && (
           <div className="space-y-6">
-            {/* Summary Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              {/* Total Stock */}
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <div className="text-sm text-blue-600 mb-1">Today's Stock</div>
-                <div className="space-y-1">
-                  <div>
-                    <div className="text-xl font-bold text-blue-700">{getTotalInitialStock()}kg</div>
-                    <div className="text-sm text-blue-600">{dailySetup.estimationMethod === "liveRate" ? "Live weight" : "Meat weight"}</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Current Stock */}
-              <div className="bg-green-50 p-4 rounded-lg">
-                <div className="text-sm text-green-600 mb-1">Current Stock</div>
-                <div className="space-y-1">
-                  <div>
-                    <div className="text-xl font-bold text-green-700">{getRemainingStock()}kg</div>
-                    <div className="text-sm text-green-600">{dailySetup.estimationMethod === "liveRate" ? "Live weight" : "Meat weight"}</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Shop Rate */}
-              <div className="bg-purple-50 p-4 rounded-lg">
-                <div className="text-sm text-purple-600 mb-1">Shop Rate</div>
-                <div className="text-xl font-bold text-purple-700">₹{dailySetup.shopRate}/kg</div>
-              </div>
-
-              {/* Paper Rate */}
-              <div className="bg-orange-50 p-4 rounded-lg">
-                <div className="text-sm text-orange-600 mb-1">Paper Rate</div>
-                <div className="text-xl font-bold text-orange-700">₹{dailySetup.paperRate}/kg</div>
-              </div>
-
-              {/* Total Sales */}
-              <div className="bg-rose-50 p-4 rounded-lg">
-                <div className="text-sm text-rose-600 mb-1">Total Sales</div>
-                <div className="text-xl font-bold text-rose-700">₹{getCurrentEarnings().toFixed(2)}</div>
-                <div className="grid grid-cols-2 gap-1 text-xs text-rose-600 mt-1">
-                  <div>R: ₹{getRetailSales().toFixed(2)}</div>
-                  <div>W: ₹{getWholesaleSales().toFixed(2)}</div>
-                </div>
-              </div>
-
-              {/* Stock Sold */}
-              <div className="bg-yellow-50 p-4 rounded-lg">
-                <div className="text-sm text-yellow-600 mb-1">Stock Sold</div>
-                <div className="text-xl font-bold text-yellow-700">{getSoldStock()}kg</div>
-                <div className="text-sm text-yellow-600 mt-1">{getTotalBirds()} birds</div>
-              </div>
-            </div>
+            {/* Dashboard Summary - Using the shared DashboardSummary component */}
+            <Suspense fallback={<div>Loading summary...</div>}>
+              <DashboardSummary
+                dailySetup={dailySetup}
+                bills={bills}
+                getTotalInitialStock={getTotalInitialStock}
+                getSoldStockLiveWeight={getSoldStockLiveWeight}
+                getSoldStockMeatWeight={getSoldStockMeatWeight}
+                getRemainingStockLiveWeight={getRemainingStockLiveWeight}
+                getRemainingStockMeatWeight={getRemainingStockMeatWeight}
+                getTotalInitialStockInMeatWeight={getTotalInitialStockInMeatWeight}
+                getRemainingBirds={getRemainingBirds}
+                getCurrentEarnings={getCurrentEarnings}
+                getRetailSales={getRetailSales}
+                getWholesaleSales={getWholesaleSales}
+              />
+            </Suspense>
 
             {/* Day Management Component */}
             <Suspense fallback={<div>Loading...</div>}>
               <DayManagement
                 dailySetup={dailySetup}
                 onStartNewDay={handleStartNewDay}
-                currentStock={getRemainingStock()}
+                currentStock={getRemainingStockLiveWeight()}
                 remainingBirds={getRemainingBirds()}
-                currentEarnings={getCurrentEarnings()}
+                currentEarnings={Number(getCurrentEarnings())}
                 estimatedEarnings={dailySetup.estimatedEarnings}
                 totalDiscounts={bills.reduce((total, bill) => total + Number(bill.discountPerKg || 0) * Number(bill.weight || 0), 0)}
               />
@@ -342,7 +335,7 @@ const AdminDashboard = ({ logout }) => {
                     onCancel={handleCancelEdit}
                     editData={editingBill}
                     weightType={dailySetup.estimationMethod === "liveRate" ? "live" : "meat"}
-                    currentStock={getRemainingStock()}
+                    currentStock={getRemainingStockLiveWeight()}
                   />
                 </Suspense>
               </div>

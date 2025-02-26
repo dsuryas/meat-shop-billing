@@ -19,44 +19,41 @@ const Stats = () => {
     if (closings.length === 0) return null;
 
     const totalMeatLossPercent = closings.reduce((sum, c) => {
-      const meatLossPercent =
-        (Number(c.weightLoss) /
-          (Number(c.expectedStock) * MEAT_CONVERSION_FACTOR)) *
-        100;
-      return sum + meatLossPercent;
+      return sum + Number(c.weightLossPercentage || 0);
     }, 0);
 
-    const totalLiveLossPercent = closings.reduce((sum, c) => {
-      const liveLossPercent =
-        (Number(c.weightLoss) / Number(c.expectedStock)) * 100;
-      return sum + liveLossPercent;
+    const totalBirdLossPercent = closings.reduce((sum, c) => {
+      return sum + Number(c.birdLossPercentage || 0);
     }, 0);
+
+    const totalEarnings = closings.reduce((sum, c) => sum + Number(c.netEarnings || 0), 0);
+    const totalWeightLoss = closings.reduce((sum, c) => sum + Number(c.weightLoss || 0), 0);
 
     return {
-      meatLossPercent: totalMeatLossPercent / closings.length,
-      liveLossPercent: totalLiveLossPercent / closings.length,
+      weightLossPercent: totalMeatLossPercent / closings.length,
+      birdLossPercent: totalBirdLossPercent / closings.length,
+      avgEarnings: totalEarnings / closings.length,
+      avgWeightLoss: totalWeightLoss / closings.length,
     };
   };
 
   const getExtremes = () => {
     if (closings.length === 0) return null;
 
-    const lossPercentages = closings.map((c) => ({
-      meatLoss:
-        (Number(c.weightLoss) /
-          (Number(c.expectedStock) * MEAT_CONVERSION_FACTOR)) *
-        100,
-      liveLoss: (Number(c.weightLoss) / Number(c.expectedStock)) * 100,
-    }));
+    const lossPercentages = closings.map((c) => Number(c.weightLossPercentage || 0));
+    const weightLosses = closings.map((c) => Number(c.weightLoss || 0));
+    const earnings = closings.map((c) => Number(c.netEarnings || 0));
 
     return {
       highest: {
-        meatLoss: Math.max(...lossPercentages.map((l) => l.meatLoss)),
-        liveLoss: Math.max(...lossPercentages.map((l) => l.liveLoss)),
+        lossPercent: Math.max(...lossPercentages),
+        weightLoss: Math.max(...weightLosses),
+        earnings: Math.max(...earnings),
       },
       lowest: {
-        meatLoss: Math.min(...lossPercentages.map((l) => l.meatLoss)),
-        liveLoss: Math.min(...lossPercentages.map((l) => l.liveLoss)),
+        lossPercent: Math.min(...lossPercentages),
+        weightLoss: Math.min(...weightLosses),
+        earnings: Math.min(...earnings),
       },
     };
   };
@@ -66,6 +63,43 @@ const Stats = () => {
 
   return (
     <div className="space-y-6">
+      {/* Summary Statistics Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <Card className="bg-blue-50">
+          <CardContent className="pt-4 pb-4">
+            <div className="text-sm text-blue-600 mb-1">Average Weight Loss</div>
+            <div className="text-lg font-bold text-blue-700">
+              {averages?.avgWeightLoss.toFixed(2)}kg ({averages?.weightLossPercent.toFixed(2)}%)
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-amber-50">
+          <CardContent className="pt-4 pb-4">
+            <div className="text-sm text-amber-600 mb-1">Highest Weight Loss</div>
+            <div className="text-lg font-bold text-amber-700">
+              {extremes?.highest.weightLoss.toFixed(2)}kg ({extremes?.highest.lossPercent.toFixed(2)}%)
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-green-50">
+          <CardContent className="pt-4 pb-4">
+            <div className="text-sm text-green-600 mb-1">Lowest Weight Loss</div>
+            <div className="text-lg font-bold text-green-700">
+              {extremes?.lowest.weightLoss.toFixed(2)}kg ({extremes?.lowest.lossPercent.toFixed(2)}%)
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-purple-50">
+          <CardContent className="pt-4 pb-4">
+            <div className="text-sm text-purple-600 mb-1">Average Earnings</div>
+            <div className="text-lg font-bold text-purple-700">₹{averages?.avgEarnings.toFixed(2)}</div>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Daily Operations Statistics</CardTitle>
@@ -75,144 +109,68 @@ const Stats = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Weight Type
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Expected Stock
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actual Stock
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Loss (Meat/Live)
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Loss % (Meat/Live)
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Birds Remaining
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Financial
-                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock Info</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Weight Loss</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Birds</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Financial</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {closings.map((closing, index) => {
-                  const meatLoss =
-                    Number(closing.weightLoss) / MEAT_CONVERSION_FACTOR;
-                  const liveLoss = Number(closing.weightLoss);
-                  const meatLossPercent =
-                    (meatLoss / Number(closing.expectedStock)) * 100;
-                  const liveLossPercent =
-                    (liveLoss /
-                      (Number(closing.expectedStock) *
-                        MEAT_CONVERSION_FACTOR)) *
-                    100;
-
-                  return (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatDate(closing.date)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {closing.estimationMethod === "liveRate"
-                          ? "Live"
-                          : "Meat"}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {Number(closing.expectedStock).toFixed(2)}kg
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {Number(closing.actualStock).toFixed(2)}kg
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div>{closing.meatWeightLoss}kg meat</div>
-                        <div>{closing.liveWeightLoss}kg live</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div>{closing.meatWeightLossPercentage}% meat</div>
-                        <div>{closing.liveWeightLossPercentage}% live</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div>Actual: {closing.actualBirds}</div>
-                        <div>
-                          Loss: {closing.birdLoss} ({closing.birdLossPercentage}
-                          %)
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div>
-                          Est: ₹{Number(closing.estimatedEarnings).toFixed(2)}
-                        </div>
-                        <div>
-                          Act: ₹{Number(closing.actualEarnings).toFixed(2)}
-                        </div>
-                        <div>
-                          Disc: ₹{Number(closing.totalDiscounts).toFixed(2)}
-                        </div>
+                {closings.map((closing, index) => (
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">{formatDate(closing.date)}</td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <div>Expected: {Number(closing.expectedStock).toFixed(2)}kg</div>
+                      <div>Actual: {Number(closing.actualStock).toFixed(2)}kg</div>
+                      <div className="text-xs text-gray-400 mt-1">{closing.estimationMethod === "liveRate" ? "Live weight" : "Meat weight"}</div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-500">
+                        <span
+                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
+                          ${Number(closing.weightLoss) > 0 ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"}`}
+                        >
+                          {Number(closing.weightLoss).toFixed(2)}kg
+                        </span>
+                        <span className="ml-2">({Number(closing.weightLossPercentage).toFixed(2)}%)</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <div>Expected: {closing.expectedBirds}</div>
+                      <div>Actual: {closing.actualBirds}</div>
+                      <div className="mt-1">
+                        <span
+                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
+                          ${Number(closing.birdLoss) > 0 ? "bg-orange-100 text-orange-800" : "bg-green-100 text-green-800"}`}
+                        >
+                          Loss: {closing.birdLoss} ({closing.birdLossPercentage}%)
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <div className="grid grid-cols-2 gap-x-4 text-sm">
+                        <div>Est: ₹{Number(closing.estimatedEarnings).toFixed(2)}</div>
+                        <div>Act: ₹{Number(closing.actualEarnings).toFixed(2)}</div>
+                        <div>Disc: ₹{Number(closing.totalDiscounts).toFixed(2)}</div>
                         <div>Exp: ₹{Number(closing.expenses).toFixed(2)}</div>
-                        <div className="text-green-600 font-medium">
-                          Net: ₹{Number(closing.netEarnings).toFixed(2)}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                      </div>
+                      <div className="mt-1 text-green-600 font-medium border-t border-green-200 pt-1">Net: ₹{Number(closing.netEarnings).toFixed(2)}</div>
+                    </td>
+                  </tr>
+                ))}
+                {closings.length === 0 && (
+                  <tr>
+                    <td colSpan="5" className="px-4 py-8 text-center text-gray-500">
+                      No data available
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
         </CardContent>
       </Card>
-
-      {/* Summary Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-blue-50">
-          <CardContent className="pt-6">
-            <div className="text-sm text-blue-600 mb-1">Average Loss</div>
-            <div className="space-y-1">
-              <div className="text-lg font-bold text-blue-700">
-                {averages?.meatLossPercent.toFixed(2)}% meat
-              </div>
-              <div className="text-lg font-bold text-blue-700">
-                {averages?.liveLossPercent.toFixed(2)}% live
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-amber-50">
-          <CardContent className="pt-6">
-            <div className="text-sm text-amber-600 mb-1">Highest Loss</div>
-            <div className="space-y-1">
-              <div className="text-lg font-bold text-amber-700">
-                {extremes?.highest.meatLoss.toFixed(2)}% meat
-              </div>
-              <div className="text-lg font-bold text-amber-700">
-                {extremes?.highest.liveLoss.toFixed(2)}% live
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-green-50">
-          <CardContent className="pt-6">
-            <div className="text-sm text-green-600 mb-1">Lowest Loss</div>
-            <div className="space-y-1">
-              <div className="text-lg font-bold text-green-700">
-                {extremes?.lowest.meatLoss.toFixed(2)}% meat
-              </div>
-              <div className="text-lg font-bold text-green-700">
-                {extremes?.lowest.liveLoss.toFixed(2)}% live
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 };
