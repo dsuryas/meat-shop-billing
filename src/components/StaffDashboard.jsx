@@ -12,7 +12,9 @@ import {
   clearDaySetup,
   MEAT_CONVERSION_FACTOR,
   saveDailyClosing,
+  getClosedDay,
 } from "../utils/storage";
+import { Input } from "./ui/input";
 
 const DailySetup = React.lazy(() => import("./DailySetup"));
 const BillingForm = React.lazy(() => import("./BillingForm"));
@@ -30,6 +32,9 @@ const StaffDashboard = ({ logout }) => {
   const [editingBill, setEditingBill] = useState(null);
   const [showSetup, setShowSetup] = useState(false);
   const [showCloseDayModal, setShowCloseDayModal] = useState(false);
+  const [viewingClosedDay, setViewingClosedDay] = useState(false);
+  const [closedDayData, setClosedDayData] = useState(null);
+  const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
 
   // Handler functions
   const handleLogout = (e) => {
@@ -54,13 +59,49 @@ const StaffDashboard = ({ logout }) => {
   }, []);
 
   const loadDailyData = () => {
+    // Always get the most recently closed day data
+    const closedDay = getClosedDay();
+    setClosedDayData(closedDay);
+
+    // Get the current saved bills
+    const savedBills = getBills();
+    setBills(Array.isArray(savedBills) ? savedBills : []);
+
+    // Get the daily setup
     const setup = getDailySetup();
+
+    // Check if we have a valid setup for today
     if (setup && isDaySetupValid(new Date())) {
       setDailySetup(setup);
-      const savedBills = getBills();
-      setBills(savedBills);
+      setViewingClosedDay(false);
+    } else if (closedDay) {
+      // If no current setup but we have closed day data, we can view that
+      setViewingClosedDay(true);
+      setDailySetup(closedDay.setup);
+      setBills(closedDay.bills || []);
     } else {
       setShowSetup(true);
+      setBills([]);
+      setViewingClosedDay(false);
+    }
+  };
+
+  // Toggle between viewing current day and closed day
+  const toggleDayView = () => {
+    if (viewingClosedDay) {
+      // Switch to current day view if available
+      const setup = getDailySetup();
+      if (setup && isDaySetupValid(new Date())) {
+        setViewingClosedDay(false);
+        setDailySetup(setup);
+        const currentBills = getBills();
+        setBills(Array.isArray(currentBills) ? currentBills : []);
+      }
+    } else if (closedDayData) {
+      // Switch to closed day view
+      setViewingClosedDay(true);
+      setDailySetup(closedDayData.setup);
+      setBills(closedDayData.bills || []);
     }
   };
 
@@ -69,18 +110,44 @@ const StaffDashboard = ({ logout }) => {
     const savedSetup = saveDailySetup(setupData);
     setDailySetup(savedSetup);
     setShowSetup(false);
+    setViewingClosedDay(false);
   };
 
   // Handle starting a new day
   const handleStartNewDay = (selectedDate) => {
+    // Save reference to current data before clearing
+    saveCurrentDayDataBeforeClearing();
+
+    // Clear current setup
     clearDaySetup();
     setDailySetup(null);
     setShowSetup(true);
     setBills([]);
+    setViewingClosedDay(false);
+  };
+
+  // Save current day's data before starting a new day
+  const saveCurrentDayDataBeforeClearing = () => {
+    const currentSetup = getDailySetup();
+    const currentBills = getBills();
+
+    if (currentSetup && currentBills.length > 0) {
+      const dataToSave = {
+        date: currentSetup.date,
+        setup: currentSetup,
+        bills: currentBills,
+      };
+      // Store this data so it can be accessed later
+      localStorage.setItem("meatShop_closedDay", JSON.stringify(dataToSave));
+    }
   };
 
   // Billing option selection handler
   const handleBillingOptionSelect = (option) => {
+    if (viewingClosedDay) {
+      // Don't allow billing changes when viewing closed day
+      return;
+    }
     setEditingBill(null);
     setSelectedBillingOption(option);
     setShowBillingForm(true);
@@ -116,6 +183,11 @@ const StaffDashboard = ({ logout }) => {
 
   // Edit bill handler
   const handleEditBill = (bill) => {
+    if (viewingClosedDay) {
+      // Don't allow editing when viewing closed day
+      return;
+    }
+
     if (bill.paymentType === "partial") {
       setEditingBill(bill);
       setSelectedBillingOption(bill.billOption);
@@ -208,6 +280,25 @@ const StaffDashboard = ({ logout }) => {
       .toFixed(2);
   };
 
+  // Handle closing the day
+  const handleCloseDayConfirmed = async (closingData) => {
+    const saved = await saveDailyClosing(closingData);
+
+    if (saved) {
+      // Update the closed day data without clearing current setup
+      setClosedDayData({
+        date: closingData.date,
+        setup: dailySetup,
+        bills: bills,
+        closingData: closingData,
+      });
+
+      // Show a flag indicating the day is closed
+      setViewingClosedDay(true);
+    }
+    setShowCloseDayModal(false);
+  };
+
   // Early return for dashboard with Start Day button when no setup exists
   if (!dailySetup) {
     return (
@@ -231,7 +322,10 @@ const StaffDashboard = ({ logout }) => {
             <CardContent>
               <div className="text-center">
                 <p className="text-gray-500 mb-4">No active daily setup found. Start a new day to begin operations.</p>
-                <Button onClick={() => setShowSetup(true)}>Start Day</Button>
+                <div className="flex gap-4 justify-center">
+                  <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-48" />
+                  <Button onClick={() => setShowSetup(true)}>Start Day</Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -241,7 +335,7 @@ const StaffDashboard = ({ logout }) => {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
               <Suspense fallback={<div>Loading...</div>}>
-                <DailySetup onSetupComplete={handleSetupComplete} onCancel={() => setShowSetup(false)} />
+                <DailySetup onSetupComplete={handleSetupComplete} onCancel={() => setShowSetup(false)} initialDate={startDate} />
               </Suspense>
             </div>
           </div>
@@ -257,7 +351,7 @@ const StaffDashboard = ({ logout }) => {
         <div className="p-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold">Staff Dashboard</h1>
           <div className="flex space-x-4">
-            {dailySetup && (
+            {dailySetup && !viewingClosedDay && (
               <Button variant="secondary" type="button" onClick={handleCloseDayClick}>
                 Close Day
               </Button>
@@ -272,6 +366,33 @@ const StaffDashboard = ({ logout }) => {
 
       {/* Main Content */}
       <div className="p-6">
+        {/* Day Status Banner */}
+        {viewingClosedDay && (
+          <div className="bg-amber-50 p-4 mb-6 rounded-lg border border-amber-200">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-semibold text-amber-800">Viewing Closed Day: {new Date(closedDayData.date).toLocaleDateString()}</h2>
+                <p className="text-sm text-amber-700">This day has been closed. You are viewing historical data.</p>
+              </div>
+              <div className="flex space-x-2">
+                <Button variant="outline" onClick={() => setShowSetup(true)} className="bg-white">
+                  Start New Day
+                </Button>
+                {!viewingClosedDay && closedDayData && (
+                  <Button variant="outline" onClick={toggleDayView} className="bg-white">
+                    View Closed Day
+                  </Button>
+                )}
+                {viewingClosedDay && getDailySetup() && (
+                  <Button variant="outline" onClick={toggleDayView} className="bg-white">
+                    View Current Day
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Dashboard Summary - New detailed version */}
         <Suspense fallback={<div>Loading summary...</div>}>
           <DashboardSummary
@@ -327,16 +448,20 @@ const StaffDashboard = ({ logout }) => {
               />
             </Suspense>
 
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Generate Bill</h2>
-            </div>
+            {!viewingClosedDay && (
+              <>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold">Generate Bill</h2>
+                </div>
+
+                <Suspense fallback={<div>Loading...</div>}>
+                  <BillingOptions onSelectOption={handleBillingOptionSelect} />
+                </Suspense>
+              </>
+            )}
 
             <Suspense fallback={<div>Loading...</div>}>
-              <BillingOptions onSelectOption={handleBillingOptionSelect} />
-            </Suspense>
-
-            <Suspense fallback={<div>Loading...</div>}>
-              <BillsTable bills={bills} onEditBill={handleEditBill} isAdmin={false} />
+              <BillsTable bills={bills} onEditBill={handleEditBill} isAdmin={false} isReadOnly={viewingClosedDay} />
             </Suspense>
           </div>
         )}
@@ -354,15 +479,18 @@ const StaffDashboard = ({ logout }) => {
                 estimatedEarnings={dailySetup.estimatedEarnings}
                 totalDiscounts={bills.reduce((total, bill) => total + Number(bill.discountPerKg || 0) * Number(bill.weight || 0), 0)}
                 onClose={() => setShowCloseDayModal(false)}
-                onConfirm={async (closingData) => {
-                  const saved = await saveDailyClosing(closingData);
-                  if (saved) {
-                    await clearDaySetup();
-                    window.location.reload();
-                  }
-                  setShowCloseDayModal(false);
-                }}
+                onConfirm={handleCloseDayConfirmed}
               />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {showSetup && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <Suspense fallback={<div>Loading...</div>}>
+              <DailySetup onSetupComplete={handleSetupComplete} onCancel={() => setShowSetup(false)} initialDate={startDate} />
             </Suspense>
           </div>
         </div>

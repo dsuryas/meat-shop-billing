@@ -1,11 +1,5 @@
 import React, { useState } from "react";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "./ui/card";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./ui/card";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -32,6 +26,7 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
       chickenWithSkin: "",
       choppedChicken: "",
       countryChicken: "",
+      countryChickenChopped: "",
     },
 
     // Estimation method
@@ -56,8 +51,7 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
   };
 
   const calculateEstimatedEarnings = () => {
-    const totalStock =
-      Number(setupData.freshStock || 0) + Number(setupData.remainingStock || 0);
+    const totalStock = Number(setupData.freshStock || 0) + Number(setupData.remainingStock || 0);
 
     if (totalStock <= 0) return 0;
 
@@ -86,32 +80,19 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
     }
 
     // Validate stock and birds are at least 0 (not empty)
-    if (
-      setupData.freshStock === "" ||
-      setupData.remainingStock === "" ||
-      setupData.freshBirds === "" ||
-      setupData.remainingBirds === ""
-    ) {
+    if (setupData.freshStock === "" || setupData.remainingStock === "" || setupData.freshBirds === "" || setupData.remainingBirds === "") {
       setMessage("Stock and bird count cannot be empty. Use 0 if none.");
       return;
     }
 
     // Validate numbers are not negative
-    if (
-      Number(setupData.freshStock) < 0 ||
-      Number(setupData.remainingStock) < 0 ||
-      Number(setupData.freshBirds) < 0 ||
-      Number(setupData.remainingBirds) < 0
-    ) {
+    if (Number(setupData.freshStock) < 0 || Number(setupData.remainingStock) < 0 || Number(setupData.freshBirds) < 0 || Number(setupData.remainingBirds) < 0) {
       setMessage("Stock and bird count cannot be negative");
       return;
     }
 
     // Validate product prices
-    if (
-      !setupData.productPrices.liveChicken ||
-      !setupData.productPrices.chickenWithSkin
-    ) {
+    if (!setupData.productPrices.liveChicken || !setupData.productPrices.chickenWithSkin) {
       setMessage("Please fill all product prices");
       return;
     }
@@ -139,13 +120,7 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
           {/* Date Selection */}
           <div>
             <label className="text-sm font-medium">Date</label>
-            <Input
-              type="date"
-              value={setupData.date}
-              onChange={(e) => handleInputChange("date", e.target.value)}
-              className="mt-1"
-              disabled={isComplete}
-            />
+            <Input type="date" value={setupData.date} onChange={(e) => handleInputChange("date", e.target.value)} className="mt-1" disabled={isComplete} />
           </div>
 
           {/* Base Rates */}
@@ -159,9 +134,7 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
                   step="0.01"
                   placeholder="Enter paper rate"
                   value={setupData.paperRate}
-                  onChange={(e) =>
-                    handleInputChange("paperRate", e.target.value)
-                  }
+                  onChange={(e) => handleInputChange("paperRate", e.target.value)}
                   className="mt-1"
                   disabled={isComplete}
                 />
@@ -198,32 +171,24 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium">
-                    Fresh Stock Weight (kg)
-                  </label>
+                  <label className="text-sm font-medium">Fresh Stock Weight (kg)</label>
                   <Input
                     type="number"
                     step="0.01"
                     placeholder="Enter fresh stock weight"
                     value={setupData.freshStock}
-                    onChange={(e) =>
-                      handleInputChange("freshStock", e.target.value)
-                    }
+                    onChange={(e) => handleInputChange("freshStock", e.target.value)}
                     className="mt-1"
                     disabled={isComplete}
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">
-                    Fresh Stock (Birds)
-                  </label>
+                  <label className="text-sm font-medium">Fresh Stock (Birds)</label>
                   <Input
                     type="number"
                     placeholder="Enter number of birds"
                     value={setupData.freshBirds}
-                    onChange={(e) =>
-                      handleInputChange("freshBirds", e.target.value)
-                    }
+                    onChange={(e) => handleInputChange("freshBirds", e.target.value)}
                     className="mt-1"
                     disabled={isComplete}
                   />
@@ -231,32 +196,24 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
               </div>
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium">
-                    Remaining Stock Weight (kg)
-                  </label>
+                  <label className="text-sm font-medium">Remaining Stock Weight (kg)</label>
                   <Input
                     type="number"
                     step="0.01"
                     placeholder="Enter remaining stock weight"
                     value={setupData.remainingStock}
-                    onChange={(e) =>
-                      handleInputChange("remainingStock", e.target.value)
-                    }
+                    onChange={(e) => handleInputChange("remainingStock", e.target.value)}
                     className="mt-1"
                     disabled={isComplete}
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">
-                    Remaining Stock (Birds)
-                  </label>
+                  <label className="text-sm font-medium">Remaining Stock (Birds)</label>
                   <Input
                     type="number"
                     placeholder="Enter number of birds"
                     value={setupData.remainingBirds}
-                    onChange={(e) =>
-                      handleInputChange("remainingBirds", e.target.value)
-                    }
+                    onChange={(e) => handleInputChange("remainingBirds", e.target.value)}
                     className="mt-1"
                     disabled={isComplete}
                   />
@@ -270,43 +227,33 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
             <h3 className="text-lg font-semibold mb-4">Product Prices</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium">
-                  Live Chicken (₹/kg)
-                </label>
+                <label className="text-sm font-medium">Live Chicken (₹/kg)</label>
                 <Input
                   type="number"
                   step="0.01"
                   placeholder="Enter price"
                   value={setupData.productPrices.liveChicken}
-                  onChange={(e) =>
-                    handleInputChange("liveChicken", e.target.value, true)
-                  }
+                  onChange={(e) => handleInputChange("liveChicken", e.target.value, true)}
                   className="mt-1"
                   disabled={isComplete}
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">
-                  Chicken with Skin (₹/kg)
-                </label>
+                <label className="text-sm font-medium">Chicken with Skin (₹/kg)</label>
                 <Input
                   type="number"
                   step="0.01"
                   placeholder="Enter price"
                   value={setupData.productPrices.chickenWithSkin}
-                  onChange={(e) =>
-                    handleInputChange("chickenWithSkin", e.target.value, true)
-                  }
+                  onChange={(e) => handleInputChange("chickenWithSkin", e.target.value, true)}
                   className="mt-1"
                   disabled={isComplete}
                 />
               </div>
               <div>
                 <label className="text-sm font-medium">
-                  Chopped Chicken (₹/kg)
-                  <span className="text-xs text-gray-500 ml-2">
-                    (Shop rate)
-                  </span>
+                  Skin-out Chicken (₹/kg)
+                  <span className="text-xs text-gray-500 ml-2">(Shop rate)</span>
                 </label>
                 <Input
                   type="number"
@@ -318,17 +265,25 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">
-                  Country Chicken (₹/kg)
-                </label>
+                <label className="text-sm font-medium">Country Chicken (₹/kg)</label>
                 <Input
                   type="number"
                   step="0.01"
                   placeholder="Enter price"
                   value={setupData.productPrices.countryChicken}
-                  onChange={(e) =>
-                    handleInputChange("countryChicken", e.target.value, true)
-                  }
+                  onChange={(e) => handleInputChange("countryChicken", e.target.value, true)}
+                  className="mt-1"
+                  disabled={isComplete}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Country Chicken Skin-out (₹/kg)</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="Enter price"
+                  value={setupData.productPrices.countryChickenChopped}
+                  onChange={(e) => handleInputChange("countryChickenChopped", e.target.value, true)}
                   className="mt-1"
                   disabled={isComplete}
                 />
@@ -338,9 +293,7 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
 
           {/* Estimation Method */}
           <div className="border rounded-lg p-4 bg-gray-50">
-            <h3 className="text-lg font-semibold mb-4">
-              Revenue Estimation Method
-            </h3>
+            <h3 className="text-lg font-semibold mb-4">Revenue Estimation Method</h3>
             <div className="space-y-2">
               <label className="flex items-center space-x-2">
                 <input
@@ -348,15 +301,11 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
                   value="liveRate"
                   name="estimationMethod"
                   checked={setupData.estimationMethod === "liveRate"}
-                  onChange={(e) =>
-                    handleInputChange("estimationMethod", e.target.value)
-                  }
+                  onChange={(e) => handleInputChange("estimationMethod", e.target.value)}
                   disabled={isComplete}
                   className="text-blue-600"
                 />
-                <span className="text-sm">
-                  Live Chicken Rate (Total Stock × Live Rate)
-                </span>
+                <span className="text-sm">Live Chicken Rate (Total Stock × Live Rate)</span>
               </label>
               <label className="flex items-center space-x-2">
                 <input
@@ -364,15 +313,11 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
                   value="skinOutRate"
                   name="estimationMethod"
                   checked={setupData.estimationMethod === "skinOutRate"}
-                  onChange={(e) =>
-                    handleInputChange("estimationMethod", e.target.value)
-                  }
+                  onChange={(e) => handleInputChange("estimationMethod", e.target.value)}
                   disabled={isComplete}
                   className="text-blue-600"
                 />
-                <span className="text-sm">
-                  Skin out Rate ((Total Stock ÷ 1.45) × Skin out Rate)
-                </span>
+                <span className="text-sm">Skin out Rate ((Total Stock ÷ 1.45) × Skin out Rate)</span>
               </label>
             </div>
           </div>
@@ -420,44 +365,24 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
           {/* Summary Information */}
           {setupData.freshStock !== "" &&
             setupData.remainingStock !== "" &&
-            ((setupData.estimationMethod === "liveRate" &&
-              setupData.productPrices.liveChicken) ||
-              (setupData.estimationMethod === "skinOutRate" &&
-                setupData.shopRate)) && (
+            ((setupData.estimationMethod === "liveRate" && setupData.productPrices.liveChicken) ||
+              (setupData.estimationMethod === "skinOutRate" && setupData.shopRate)) && (
               <div className="mt-4 p-4 bg-green-50 rounded-lg space-y-2">
-                <h3 className="text-lg font-semibold text-green-700">
-                  Summary
-                </h3>
+                <h3 className="text-lg font-semibold text-green-700">Summary</h3>
                 <div className="space-y-1 text-sm text-green-600">
                   <p>
-                    Total stock:{" "}
-                    {Number(setupData.freshStock) +
-                      Number(setupData.remainingStock)}
+                    Total stock: {Number(setupData.freshStock) + Number(setupData.remainingStock)}
                     kg
                   </p>
-                  <p>
-                    Total birds:{" "}
-                    {Number(setupData.freshBirds) +
-                      Number(setupData.remainingBirds)}
-                  </p>
+                  <p>Total birds: {Number(setupData.freshBirds) + Number(setupData.remainingBirds)}</p>
                   {setupData.estimationMethod === "skinOutRate" && (
                     <p>
-                      Estimated meat quantity:{" "}
-                      {(
-                        (Number(setupData.freshStock) +
-                          Number(setupData.remainingStock)) /
-                        1.45
-                      ).toFixed(2)}
+                      Estimated meat quantity: {((Number(setupData.freshStock) + Number(setupData.remainingStock)) / 1.45).toFixed(2)}
                       kg
                     </p>
                   )}
-                  {Number(setupData.freshStock) +
-                    Number(setupData.remainingStock) >
-                    0 && (
-                    <p className="text-xl font-bold text-green-700 mt-2">
-                      Estimated Earnings: ₹
-                      {calculateEstimatedEarnings().toFixed(2)}
-                    </p>
+                  {Number(setupData.freshStock) + Number(setupData.remainingStock) > 0 && (
+                    <p className="text-xl font-bold text-green-700 mt-2">Estimated Earnings: ₹{calculateEstimatedEarnings().toFixed(2)}</p>
                   )}
                 </div>
               </div>
@@ -469,12 +394,7 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
                 Complete Daily Setup
               </Button>
               {onCancel && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={onCancel}
-                  className="flex-1"
-                >
+                <Button type="button" variant="outline" onClick={onCancel} className="flex-1">
                   Cancel
                 </Button>
               )}

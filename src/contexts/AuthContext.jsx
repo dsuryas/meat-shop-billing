@@ -14,9 +14,7 @@ export const AuthProvider = ({ children }) => {
   const [error, setError] = useState("");
 
   const login = (username, password) => {
-    const foundUser = users.find(
-      (u) => u.username === username && u.password === password
-    );
+    const foundUser = users.find((u) => u.username === username && u.password === password);
 
     if (foundUser) {
       setUser(foundUser);
@@ -40,9 +38,5 @@ export const AuthProvider = ({ children }) => {
     return true;
   };
 
-  return (
-    <AuthContext.Provider value={{ user, login, logout, addUser, error }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={{ user, login, logout, addUser, error }}>{children}</AuthContext.Provider>;
 };

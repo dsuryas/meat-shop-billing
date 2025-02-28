@@ -21,33 +21,38 @@ export const saveDailySetup = (setupData) => {
 };
 
 export const getDailySetup = () => {
-  const setup = localStorage.getItem(STORAGE_KEYS.DAILY_SETUP);
-  return setup ? JSON.parse(setup) : null;
+  try {
+    const setup = localStorage.getItem(STORAGE_KEYS.DAILY_SETUP);
+    return setup ? JSON.parse(setup) : null;
+  } catch (error) {
+    console.error("Error parsing daily setup from localStorage:", error);
+    return null;
+  }
 };
 
-export const isDaySetupValid = (date) => {
-  const setup = getDailySetup();
-  if (!setup) return false;
+export const isDaySetupValid = (currentDate) => {
+  try {
+    const setup = getDailySetup();
+    if (!setup) return false;
 
-  const setupDate = new Date(setup.date);
-  const targetDate = new Date(date);
+    // Compare only the date part (yyyy-mm-dd)
+    const setupDate = new Date(setup.date).toISOString().split("T")[0];
+    const today = currentDate.toISOString().split("T")[0];
 
-  return (
-    setupDate.getDate() === targetDate.getDate() &&
-    setupDate.getMonth() === targetDate.getMonth() &&
-    setupDate.getFullYear() === targetDate.getFullYear()
-  );
+    return setupDate === today;
+  } catch (error) {
+    console.error("Error checking day setup validity:", error);
+    return false;
+  }
 };
 
 // Bills Functions
 export const getBills = () => {
   try {
-    const billsStr = localStorage.getItem(STORAGE_KEYS.BILLS);
-    if (!billsStr) return [];
-    const bills = JSON.parse(billsStr);
-    return Array.isArray(bills) ? bills : [];
+    const bills = localStorage.getItem(STORAGE_KEYS.BILLS);
+    return bills ? JSON.parse(bills) : [];
   } catch (error) {
-    console.error("Error getting bills:", error);
+    console.error("Error parsing bills from localStorage:", error);
     return [];
   }
 };
@@ -72,9 +77,7 @@ export const addBill = (billData) => {
 
 export const updateBill = (updatedBill) => {
   const bills = getBills();
-  const updatedBills = bills.map((bill) =>
-    bill.id === updatedBill.id ? { ...bill, ...updatedBill } : bill
-  );
+  const updatedBills = bills.map((bill) => (bill.id === updatedBill.id ? { ...bill, ...updatedBill } : bill));
   saveBills(updatedBills);
   return updatedBills;
 };
@@ -111,11 +114,7 @@ export const addProduct = (productData) => {
 
 export const updateProduct = (updatedProduct) => {
   const products = getProducts();
-  const updatedProducts = products.map((product) =>
-    product.id === updatedProduct.id
-      ? { ...product, ...updatedProduct }
-      : product
-  );
+  const updatedProducts = products.map((product) => (product.id === updatedProduct.id ? { ...product, ...updatedProduct } : product));
   saveProducts(updatedProducts);
   return updatedProducts;
 };
@@ -133,12 +132,26 @@ export const saveUsers = (users) => {
 
 // Daily Closing Functions
 export const saveClosedDay = (dayData) => {
-  localStorage.setItem(STORAGE_KEYS.CLOSED_DAY, JSON.stringify(dayData));
+  // localStorage.setItem(STORAGE_KEYS.CLOSED_DAY, JSON.stringify(dayData));
+  localStorage.setItem(
+    STORAGE_KEYS.CLOSED_DAY,
+    JSON.stringify({
+      date: dayData.date,
+      setup: getDailySetup(),
+      bills: getBills(),
+      closingData: dayData,
+    })
+  );
 };
 
 export const getClosedDay = () => {
-  const closedDay = localStorage.getItem(STORAGE_KEYS.CLOSED_DAY);
-  return closedDay ? JSON.parse(closedDay) : null;
+  try {
+    const closedDay = localStorage.getItem(STORAGE_KEYS.CLOSED_DAY);
+    return closedDay ? JSON.parse(closedDay) : null;
+  } catch (error) {
+    console.error("Error getting closed day data:", error);
+    return null;
+  }
 };
 
 export const clearClosedDay = () => {
@@ -149,10 +162,7 @@ export const saveDailyClosing = (closingData) => {
   try {
     const closings = getDailyClosings();
     const updatedClosings = [closingData, ...closings];
-    localStorage.setItem(
-      STORAGE_KEYS.DAILY_CLOSINGS,
-      JSON.stringify(updatedClosings)
-    );
+    localStorage.setItem(STORAGE_KEYS.DAILY_CLOSINGS, JSON.stringify(updatedClosings));
     // Also save as the current closed day
     saveClosedDay(closingData);
     return true;
@@ -176,7 +186,6 @@ export const getDailyClosings = () => {
 export const clearDaySetup = () => {
   try {
     localStorage.removeItem(STORAGE_KEYS.DAILY_SETUP);
-    localStorage.removeItem(STORAGE_KEYS.BILLS);
     return true;
   } catch (error) {
     console.error("Error clearing daily setup:", error);
@@ -190,15 +199,40 @@ export const clearAllData = () => {
   });
 };
 
+// Function to start a new day setup while preserving reference to previous data
+export const startNewDaySetup = () => {
+  try {
+    // We save the current setup and bills before clearing
+    const currentSetup = getDailySetup();
+    const currentBills = getBills();
+
+    if (currentSetup && currentBills.length > 0) {
+      // Only save if we have data to save
+      localStorage.setItem(
+        STORAGE_KEYS.CLOSED_DAY,
+        JSON.stringify({
+          date: currentSetup.date,
+          setup: currentSetup,
+          bills: currentBills,
+        })
+      );
+    }
+
+    // Clear current setup but don't remove bills
+    localStorage.removeItem(STORAGE_KEYS.DAILY_SETUP);
+
+    return true;
+  } catch (error) {
+    console.error("Error starting new day setup:", error);
+    return false;
+  }
+};
+
 // Date Utility Functions
 export const isDifferentDay = (date1, date2) => {
   const d1 = new Date(date1);
   const d2 = new Date(date2);
-  return (
-    d1.getDate() !== d2.getDate() ||
-    d1.getMonth() !== d2.getMonth() ||
-    d1.getFullYear() !== d2.getFullYear()
-  );
+  return d1.getDate() !== d2.getDate() || d1.getMonth() !== d2.getMonth() || d1.getFullYear() !== d2.getFullYear();
 };
 
 export const checkNeedsDailySetup = () => {

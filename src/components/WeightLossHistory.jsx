@@ -49,24 +49,24 @@ const WeightLossHistory = () => {
         <Card className="bg-blue-50">
           <CardContent className="pt-4 pb-4">
             <div className="text-sm text-blue-600 mb-1">Average Weight Loss</div>
-            <div className="text-lg font-bold text-blue-700">{stats.average.weight.toFixed(2)}kg</div>
-            <div className="text-sm text-blue-600">{stats.average.percentage.toFixed(2)}% of stock</div>
+            <div className="text-lg font-bold text-blue-700">{stats?.average?.weight?.toFixed(2)}kg</div>
+            <div className="text-sm text-blue-600">{stats?.average?.percentage?.toFixed(2)}% of stock</div>
           </CardContent>
         </Card>
 
         <Card className="bg-amber-50">
           <CardContent className="pt-4 pb-4">
             <div className="text-sm text-amber-600 mb-1">Highest Weight Loss</div>
-            <div className="text-lg font-bold text-amber-700">{stats.highest.weight.toFixed(2)}kg</div>
-            <div className="text-sm text-amber-600">{stats.highest.percentage.toFixed(2)}% of stock</div>
+            <div className="text-lg font-bold text-amber-700">{stats?.highest?.weight?.toFixed(2)}kg</div>
+            <div className="text-sm text-amber-600">{stats?.highest?.percentage?.toFixed(2)}% of stock</div>
           </CardContent>
         </Card>
 
         <Card className="bg-green-50">
           <CardContent className="pt-4 pb-4">
             <div className="text-sm text-green-600 mb-1">Lowest Weight Loss</div>
-            <div className="text-lg font-bold text-green-700">{stats.lowest.weight.toFixed(2)}kg</div>
-            <div className="text-sm text-green-600">{stats.lowest.percentage.toFixed(2)}% of stock</div>
+            <div className="text-lg font-bold text-green-700">{stats?.lowest?.weight?.toFixed(2)}kg</div>
+            <div className="text-sm text-green-600">{stats?.lowest?.percentage?.toFixed(2)}% of stock</div>
           </CardContent>
         </Card>
       </div>

@@ -2,7 +2,19 @@ import React, { useState, useEffect, Suspense } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
 import { Button } from "./ui/button";
 import { LogOut } from "lucide-react";
-import { getDailySetup, getBills, updateBill, saveDailyClosing, clearDaySetup, MEAT_CONVERSION_FACTOR, isDaySetupValid } from "../utils/storage";
+import {
+  getDailySetup,
+  getBills,
+  updateBill,
+  saveDailyClosing,
+  clearDaySetup,
+  MEAT_CONVERSION_FACTOR,
+  isDaySetupValid,
+  getClosedDay,
+  startNewDaySetup,
+} from "../utils/storage";
+import CloseDayModal from "./CloseDayModal";
+import { Input } from "./ui/input";
 
 const PriceManagement = React.lazy(() => import("./PriceManagement"));
 const UserManagement = React.lazy(() => import("./UserManagement"));
@@ -24,6 +36,10 @@ const AdminDashboard = ({ logout }) => {
   const [selectedBillingOption, setSelectedBillingOption] = useState(null);
   const [editingBill, setEditingBill] = useState(null);
   const [showSetup, setShowSetup] = useState(false);
+  const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
+  const [closedDayData, setClosedDayData] = useState(null);
+  const [viewingClosedDay, setViewingClosedDay] = useState(false);
+  const [showCloseDayModal, setShowCloseDayModal] = useState(false);
 
   const TABS = [
     { id: "home", label: "Home" },
@@ -47,30 +63,76 @@ const AdminDashboard = ({ logout }) => {
   }, [dailySetup]);
 
   const loadDailyData = () => {
+    // Always get the most recently closed day data
+    const closedDay = getClosedDay();
+    setClosedDayData(closedDay);
+
+    // Get the current saved bills
+    const savedBills = getBills();
+    setBills(Array.isArray(savedBills) ? savedBills : []);
+
+    // Get the daily setup
     const setup = getDailySetup();
+
+    // Check if we have a valid setup for today
     if (setup && isDaySetupValid(new Date())) {
       setDailySetup(setup);
-      const savedBills = getBills();
-      setBills(Array.isArray(savedBills) ? savedBills : []);
+      setViewingClosedDay(false);
+    } else if (closedDay) {
+      // If no current setup but we have closed day data, we can view that
+      setViewingClosedDay(true);
+      setDailySetup(closedDay.setup);
+      setBills(closedDay.bills || []);
     } else {
       setShowSetup(true);
+      setBills([]);
+      setViewingClosedDay(false);
+    }
+  };
+
+  // Toggle between viewing current day and closed day
+  const toggleDayView = () => {
+    if (viewingClosedDay) {
+      // Switch to current day view if available
+      const setup = getDailySetup();
+
+      console.log("Toggle day view check:", { setup, isvalid: isDaySetupValid(new Date()) });
+
+      if (setup && isDaySetupValid(new Date())) {
+        setViewingClosedDay(false);
+        setDailySetup(setup);
+        const currentBills = getBills();
+        setBills(Array.isArray(currentBills) ? currentBills : []);
+      }
+    } else if (closedDayData) {
+      // Switch to closed day view
+      setViewingClosedDay(true);
+      setDailySetup(closedDayData.setup);
+      setBills(closedDayData.bills || []);
     }
   };
 
   const handleSetupComplete = (setupData) => {
     setDailySetup(setupData);
     setShowSetup(false);
-    setBills([]);
+    setViewingClosedDay(false);
   };
 
   const handleStartNewDay = (selectedDate) => {
-    clearDaySetup();
+    // Save reference to current data before clearing
+    startNewDaySetup(selectedDate);
+
+    // Clear current setup
     setDailySetup(null);
     setShowSetup(true);
-    setBills([]);
+    setViewingClosedDay(false);
   };
 
   const handleEditBill = (bill) => {
+    if (viewingClosedDay) {
+      // Don't allow editing when viewing closed day
+      return;
+    }
     setEditingBill(bill);
     setSelectedBillingOption(bill.billOption);
     setShowBillingForm(true);
@@ -95,59 +157,57 @@ const AdminDashboard = ({ logout }) => {
     setEditingBill(null);
   };
 
+  const handleCloseDayClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log("Close day clicked");
+    setShowCloseDayModal(true);
+  };
+
+  // Handle closing the day
+  const handleCloseDayConfirmed = async (closingData) => {
+    const saved = await saveDailyClosing(closingData);
+    if (saved) {
+      // Update the closed day data without clearing current setup
+      setClosedDayData({
+        date: closingData.date,
+        setup: dailySetup,
+        bills: bills,
+        closingData: closingData,
+      });
+
+      // Show a flag indicating the day is closed
+      setViewingClosedDay(true);
+    }
+    setShowCloseDayModal(false);
+  };
+
   // Calculation utilities
   const getTotalInitialStock = () => {
     if (!dailySetup) return 0;
-    return Number(dailySetup.freshStock || 0) + Number(dailySetup.remainingStock || 0);
+    const liveWeight = Number(dailySetup.freshStock || 0) + Number(dailySetup.remainingStock || 0);
+    return dailySetup.estimationMethod === "liveRate" ? liveWeight : (liveWeight / MEAT_CONVERSION_FACTOR).toFixed(2);
   };
 
-  const getTotalInitialStockInMeatWeight = () => {
-    if (!dailySetup) return 0;
-    return (getTotalInitialStock() / MEAT_CONVERSION_FACTOR).toFixed(3);
-  };
-
-  const getSoldStockLiveWeight = () => {
+  const getSoldStock = () => {
     if (!Array.isArray(bills)) return 0;
 
     return bills
       .reduce((total, bill) => {
-        // For bills with weightType "meat", convert to live weight
-        if (bill.weightType === "meat") {
-          return total + Number(bill.inventoryWeight || 0) * MEAT_CONVERSION_FACTOR;
-        }
+        // Use inventoryWeight directly for accurate stock tracking
         return total + Number(bill.inventoryWeight || 0);
       }, 0)
-      .toFixed(3);
+      .toFixed(2);
   };
 
-  const getSoldStockMeatWeight = () => {
-    if (!Array.isArray(bills)) return 0;
-
-    return bills
-      .reduce((total, bill) => {
-        // For bills with weightType "live", convert to meat weight
-        if (bill.weightType === "live") {
-          return total + Number(bill.inventoryWeight || 0) / MEAT_CONVERSION_FACTOR;
-        }
-        return total + Number(bill.inventoryWeight || 0);
-      }, 0)
-      .toFixed(3);
-  };
-
-  const getRemainingStockLiveWeight = () => {
-    const totalLive = getTotalInitialStock();
-    const soldLive = getSoldStockLiveWeight();
-    return Math.max(0, Number(totalLive) - Number(soldLive)).toFixed(3);
-  };
-
-  const getRemainingStockMeatWeight = () => {
-    const totalMeat = getTotalInitialStockInMeatWeight();
-    const soldMeat = getSoldStockMeatWeight();
-    return Math.max(0, Number(totalMeat) - Number(soldMeat)).toFixed(2);
+  const getRemainingStock = () => {
+    const totalStock = getTotalInitialStock();
+    const sold = getSoldStock();
+    return Math.max(0, Number(totalStock) - Number(sold)).toFixed(2);
   };
 
   const getCurrentEarnings = () => {
-    return bills.reduce((total, bill) => total + Number(bill?.price || 0), 0).toFixed(2);
+    return bills.reduce((total, bill) => total + Number(bill?.price || 0), 0);
   };
 
   const getTotalBirds = () => {
@@ -161,17 +221,11 @@ const AdminDashboard = ({ logout }) => {
   };
 
   const getRetailSales = () => {
-    return bills
-      .filter((bill) => bill.category === "retail")
-      .reduce((total, bill) => total + Number(bill.price || 0), 0)
-      .toFixed(2);
+    return bills.filter((bill) => bill.category === "retail").reduce((total, bill) => total + Number(bill.price || 0), 0);
   };
 
   const getWholesaleSales = () => {
-    return bills
-      .filter((bill) => bill.category === "wholesale")
-      .reduce((total, bill) => total + Number(bill.price || 0), 0)
-      .toFixed(2);
+    return bills.filter((bill) => bill.category === "wholesale").reduce((total, bill) => total + Number(bill.price || 0), 0);
   };
 
   const renderTabs = () => (
@@ -192,93 +246,23 @@ const AdminDashboard = ({ logout }) => {
     </div>
   );
 
-  if (!dailySetup) {
-    return (
-      <div className="min-h-screen bg-gray-100">
-        <div className="bg-white shadow">
-          <div className="p-4 flex justify-between items-center">
-            <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+  return (
+    <div className="min-h-screen">
+      <div className="bg-white shadow">
+        {/* Navigation Bar */}
+        <div className="p-4 flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+          <div className="flex space-x-4">
+            {dailySetup && !viewingClosedDay && !closedDayData && (
+              <Button variant="secondary" type="button" onClick={handleCloseDayClick}>
+                Close Day
+              </Button>
+            )}
             <Button variant="outline" onClick={logout}>
               <LogOut className="mr-2 h-4 w-4" />
               Logout
             </Button>
           </div>
-          {renderTabs()}
-        </div>
-
-        <div className="p-6">
-          {activeTab === "home" ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Start New Day</CardTitle>
-                <CardDescription>Initialize daily operations by setting up today's rates and stock</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center">
-                  <p className="text-gray-500 mb-4">No active daily setup found. Start a new day to begin operations.</p>
-                  <Button onClick={() => setShowSetup(true)}>Start Day</Button>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <>
-              {activeTab === "prices" && (
-                <Suspense fallback={<div>Loading...</div>}>
-                  <PriceManagement />
-                </Suspense>
-              )}
-              {activeTab === "products" && (
-                <Suspense fallback={<div>Loading...</div>}>
-                  <ProductManagement />
-                </Suspense>
-              )}
-              {activeTab === "users" && (
-                <Suspense fallback={<div>Loading...</div>}>
-                  <UserManagement />
-                </Suspense>
-              )}
-              {activeTab === "stats" && (
-                <Suspense fallback={<div>Loading...</div>}>
-                  <Stats />
-                </Suspense>
-              )}
-              {activeTab === "weight-loss" && (
-                <Suspense fallback={<div>Loading...</div>}>
-                  <WeightLossHistory />
-                </Suspense>
-              )}
-              {activeTab === "customers" && (
-                <Suspense fallback={<div>Loading...</div>}>
-                  <RegularCustomerForm />
-                </Suspense>
-              )}
-            </>
-          )}
-        </div>
-
-        {showSetup && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-              <Suspense fallback={<div>Loading...</div>}>
-                <DailySetup onSetupComplete={handleSetupComplete} onCancel={() => setShowSetup(false)} />
-              </Suspense>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-100">
-      <div className="bg-white shadow">
-        {/* Navigation Bar */}
-        <div className="p-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-          <Button variant="outline" onClick={logout}>
-            <LogOut className="mr-2 h-4 w-4" />
-            Logout
-          </Button>
         </div>
 
         {/* Tabs */}
@@ -286,19 +270,46 @@ const AdminDashboard = ({ logout }) => {
       </div>
 
       <div className="p-6">
+        {/* Day Status Banner */}
+        {viewingClosedDay && (
+          <div className="bg-amber-50 p-4 mb-6 rounded-lg border border-amber-200">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-semibold text-amber-800">Viewing Closed Day: {new Date(closedDayData.date).toLocaleDateString()}</h2>
+                <p className="text-sm text-amber-700">This day has been closed. You are viewing historical data.</p>
+              </div>
+              <div className="flex space-x-2">
+                <Button variant="outline" onClick={() => setShowSetup(true)} className="bg-white">
+                  Start New Day
+                </Button>
+                {!viewingClosedDay && closedDayData && (
+                  <Button variant="outline" onClick={toggleDayView} className="bg-white">
+                    View Closed Day
+                  </Button>
+                )}
+                {viewingClosedDay && getDailySetup() && (
+                  <Button variant="outline" onClick={toggleDayView} className="bg-white">
+                    View Current Day
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === "home" && dailySetup && (
           <div className="space-y-6">
-            {/* Dashboard Summary - Using the shared DashboardSummary component */}
+            {/* Dashboard Summary */}
             <Suspense fallback={<div>Loading summary...</div>}>
               <DashboardSummary
                 dailySetup={dailySetup}
                 bills={bills}
                 getTotalInitialStock={getTotalInitialStock}
-                getSoldStockLiveWeight={getSoldStockLiveWeight}
-                getSoldStockMeatWeight={getSoldStockMeatWeight}
-                getRemainingStockLiveWeight={getRemainingStockLiveWeight}
-                getRemainingStockMeatWeight={getRemainingStockMeatWeight}
-                getTotalInitialStockInMeatWeight={getTotalInitialStockInMeatWeight}
+                getSoldStockLiveWeight={getSoldStock}
+                getSoldStockMeatWeight={getSoldStock}
+                getRemainingStockLiveWeight={getRemainingStock}
+                getRemainingStockMeatWeight={getRemainingStock}
+                getTotalInitialStockInMeatWeight={getTotalInitialStock}
                 getRemainingBirds={getRemainingBirds}
                 getCurrentEarnings={getCurrentEarnings}
                 getRetailSales={getRetailSales}
@@ -311,9 +322,9 @@ const AdminDashboard = ({ logout }) => {
               <DayManagement
                 dailySetup={dailySetup}
                 onStartNewDay={handleStartNewDay}
-                currentStock={getRemainingStockLiveWeight()}
+                currentStock={getRemainingStock()}
                 remainingBirds={getRemainingBirds()}
-                currentEarnings={Number(getCurrentEarnings())}
+                currentEarnings={getCurrentEarnings()}
                 estimatedEarnings={dailySetup.estimatedEarnings}
                 totalDiscounts={bills.reduce((total, bill) => total + Number(bill.discountPerKg || 0) * Number(bill.weight || 0), 0)}
               />
@@ -335,13 +346,13 @@ const AdminDashboard = ({ logout }) => {
                     onCancel={handleCancelEdit}
                     editData={editingBill}
                     weightType={dailySetup.estimationMethod === "liveRate" ? "live" : "meat"}
-                    currentStock={getRemainingStockLiveWeight()}
+                    currentStock={getRemainingStock()}
                   />
                 </Suspense>
               </div>
             ) : (
               <Suspense fallback={<div>Loading...</div>}>
-                <BillsTable bills={bills} onEditBill={handleEditBill} isAdmin={true} />
+                <BillsTable bills={bills} onEditBill={handleEditBill} isAdmin={true} isReadOnly={viewingClosedDay} />
               </Suspense>
             )}
           </div>
@@ -383,6 +394,35 @@ const AdminDashboard = ({ logout }) => {
           </Suspense>
         )}
       </div>
+
+      {showCloseDayModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="max-w-md w-full">
+            <Suspense fallback={<div>Loading...</div>}>
+              <CloseDayModal
+                dailySetup={dailySetup}
+                currentStock={getRemainingStock()}
+                expectedBirds={getRemainingBirds()}
+                currentEarnings={getCurrentEarnings()}
+                estimatedEarnings={dailySetup.estimatedEarnings}
+                totalDiscounts={bills.reduce((total, bill) => total + Number(bill.discountPerKg || 0) * Number(bill.weight || 0), 0)}
+                onClose={() => setShowCloseDayModal(false)}
+                onConfirm={handleCloseDayConfirmed}
+              />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {showSetup && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <Suspense fallback={<div>Loading...</div>}>
+              <DailySetup onSetupComplete={handleSetupComplete} onCancel={() => setShowSetup(false)} initialDate={startDate} />
+            </Suspense>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

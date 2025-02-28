@@ -3,7 +3,7 @@ import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { Receipt, Pencil } from "lucide-react";
 
-const BillsTable = ({ bills, onEditBill, isAdmin }) => {
+const BillsTable = ({ bills, onEditBill, isAdmin, isReadOnly = false }) => {
   return (
     <Card>
       <div className="bg-white shadow rounded-lg overflow-hidden">
@@ -22,7 +22,7 @@ const BillsTable = ({ bills, onEditBill, isAdmin }) => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                {!isReadOnly && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>}
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -65,11 +65,13 @@ const BillsTable = ({ bills, onEditBill, isAdmin }) => {
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <Button variant="ghost" size="sm" onClick={() => onEditBill(bill)} disabled={!isAdmin && bill.paymentType !== "partial"}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  </td>
+                  {!isReadOnly && (
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <Button variant="ghost" size="sm" onClick={() => onEditBill(bill)} disabled={!isAdmin && bill.paymentType !== "partial"}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
