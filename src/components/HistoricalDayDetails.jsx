@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { ArrowLeft, FileText, BarChart2, ShoppingBag } from "lucide-react";
-import { formatDate, MEAT_CONVERSION_FACTOR } from "../utils/storage";
+import { formatDate, MEAT_CONVERSION_FACTOR, getClosedDay } from "../utils/storage";
 
 // Lazy-load components
 const BillsTable = React.lazy(() => import("./BillsTable"));
@@ -11,8 +11,90 @@ const DashboardSummary = React.lazy(() => import("./DashboardSummary"));
 
 const HistoricalDayDetails = ({ dayData, onBack }) => {
   const [activeTab, setActiveTab] = useState("summary");
+  const [fullDayData, setFullDayData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  if (!dayData || !dayData.closingData) {
+  useEffect(() => {
+    if (!dayData) {
+      setIsLoading(false);
+      return;
+    }
+
+    // Normalize the data structure
+    let normalizedData;
+
+    if (dayData.closingData) {
+      // We already have a structured object
+      normalizedData = dayData;
+    } else {
+      // We have just the closing data, create a wrapper
+      normalizedData = {
+        date: dayData.date,
+        closingData: dayData,
+        bills: dayData.bills || [],
+        setup: dayData.setup || {},
+      };
+    }
+
+    // Check if we have complete data or need to reconstruct it
+    if (!normalizedData.bills || !normalizedData.setup || Object.keys(normalizedData.setup).length === 0) {
+      // Try to get the closed day data from localStorage
+      const closedDay = getClosedDay();
+
+      if (closedDay && normalizedData.closingData && new Date(closedDay.date).toDateString() === new Date(normalizedData.closingData.date).toDateString()) {
+        // We found matching data, use it
+        setFullDayData({
+          date: normalizedData.closingData.date,
+          closingData: normalizedData.closingData,
+          bills: closedDay.bills || [],
+          setup: closedDay.setup || {},
+        });
+      } else {
+        // Create default values based on what we have
+        setFullDayData({
+          date: normalizedData.closingData.date,
+          closingData: normalizedData.closingData,
+          bills: [],
+          setup: {
+            estimationMethod: normalizedData.closingData.estimationMethod || "liveRate",
+            paperRate: 0,
+            shopRate: 0,
+            freshStock: 0,
+            remainingStock: 0,
+            freshBirds: 0,
+            remainingBirds: 0,
+            estimatedEarnings: normalizedData.closingData.estimatedEarnings || 0,
+            productPrices: {
+              liveChicken: 0,
+              chickenWithSkin: 0,
+              choppedChicken: 0,
+              countryChicken: 0,
+            },
+          },
+        });
+      }
+    } else {
+      // We have complete data
+      setFullDayData(normalizedData);
+    }
+
+    setIsLoading(false);
+  }, [dayData]);
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="flex justify-center items-center p-8">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 mx-auto"></div>
+            <p className="mt-4 text-gray-500">Loading historical data...</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!fullDayData || !fullDayData.closingData) {
     return (
       <Card>
         <CardHeader>
@@ -25,15 +107,24 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8 text-gray-500">No data available for this day.</div>
+          <div className="text-center py-8 text-gray-500">
+            <p>No data available for this day.</p>
+            <p className="text-sm mt-2">The historical record might be incomplete or not properly saved.</p>
+          </div>
         </CardContent>
+        <CardFooter className="flex justify-end">
+          <Button variant="outline" onClick={onBack}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to History
+          </Button>
+        </CardFooter>
       </Card>
     );
   }
 
-  const closingData = dayData.closingData;
-  const bills = dayData.bills || [];
-  const setup = dayData.setup || {};
+  const closingData = fullDayData.closingData;
+  const bills = fullDayData.bills || [];
+  const setup = fullDayData.setup || {};
 
   // Calculate metrics for the dashboard summary
   const getTotalInitialStock = () => {
@@ -41,15 +132,60 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
     return Number(setup.freshStock || 0) + Number(setup.remainingStock || 0);
   };
 
+  // const getSoldStockLiveWeight = () => {
+  //   if (!Array.isArray(bills) || bills.length === 0) {
+  //     // If no bills, use the difference between expected and actual stock
+  //     return Math.max(0, Number(closingData.expectedStock || 0) - Number(closingData.actualStock || 0)).toFixed(3);
+  //   }
+
+  //   return bills
+  //     .reduce((total, bill) => {
+  //       if (bill.weightType === "meat") {
+  //         return total + Number(bill.inventoryWeight || 0) * MEAT_CONVERSION_FACTOR;
+  //       }
+  //       return total + Number(bill.inventoryWeight || 0);
+  //     }, 0)
+  //     .toFixed(3);
+  // };
+
+  // const getSoldStockMeatWeight = () => {
+  //   if (!Array.isArray(bills) || bills.length === 0) {
+  //     // If no bills, use the difference between expected and actual stock (and convert if needed)
+  //     const stockDiff = Math.max(0, Number(closingData.expectedStock || 0) - Number(closingData.actualStock || 0));
+  //     if (setup.estimationMethod === "liveRate") {
+  //       return (stockDiff / MEAT_CONVERSION_FACTOR).toFixed(3);
+  //     }
+  //     return stockDiff.toFixed(3);
+  //   }
+
+  //   return bills
+  //     .reduce((total, bill) => {
+  //       if (bill.weightType === "live") {
+  //         return total + Number(bill.inventoryWeight || 0) / MEAT_CONVERSION_FACTOR;
+  //       }
+  //       return total + Number(bill.inventoryWeight || 0);
+  //     }, 0)
+  //     .toFixed(3);
+  // };
+
+  const getTotalInitialStockInMeatWeight = () => {
+    if (!setup) return 0;
+
+    return (getTotalInitialStock() / MEAT_CONVERSION_FACTOR).toFixed(3);
+  };
+
   const getSoldStockLiveWeight = () => {
     if (!Array.isArray(bills)) return 0;
 
     return bills
       .reduce((total, bill) => {
-        if (bill.weightType === "meat") {
-          return total + Number(bill.inventoryWeight || 0) * MEAT_CONVERSION_FACTOR;
-        }
-        return total + Number(bill.inventoryWeight || 0);
+        // For bills with weightType "meat", convert to live weight
+        // if (bill.weightType === "meat") {
+        //   return total + Number(bill.inventoryWeight || 0) * MEAT_CONVERSION_FACTOR;
+        // }
+        // return total + Number(bill.inventoryWeight || 0);
+
+        return total + Number(bill.rawWeight || 0);
       }, 0)
       .toFixed(3);
   };
@@ -69,15 +205,43 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
       .toFixed(3);
   };
 
+  const getRemainingStockLiveWeight = () => {
+    const totalLive = getTotalInitialStock();
+    const soldLive = getSoldStockLiveWeight();
+    return Math.max(0, Number(totalLive) - Number(soldLive)).toFixed(3);
+  };
+
+  const getRemainingStockMeatWeight = () => {
+    const totalMeat = getTotalInitialStockInMeatWeight();
+    const soldMeat = getSoldStockMeatWeight();
+    return Math.max(0, Number(totalMeat) - Number(soldMeat)).toFixed(2);
+  };
+
+  const getTotalBirds = () => {
+    return bills.reduce((total, bill) => total + Number(bill?.numberOfBirds || 0), 0);
+  };
+
+  const getRemainingBirds = () => {
+    if (!setup) return 0;
+    const totalInitialBirds = Number(setup.freshBirds || 0) + Number(setup.remainingBirds || 0);
+    return totalInitialBirds - getTotalBirds();
+  };
+
   const getCurrentEarnings = () => {
+    if (!Array.isArray(bills) || bills.length === 0) {
+      // If no bills, use the actual earnings from closing data
+      return Number(closingData.actualEarnings || 0);
+    }
     return bills.reduce((total, bill) => total + Number(bill?.price || 0), 0);
   };
 
   const getRetailSales = () => {
+    if (!Array.isArray(bills) || bills.length === 0) return 0;
     return bills.filter((bill) => bill.category === "retail").reduce((total, bill) => total + Number(bill.price || 0), 0);
   };
 
   const getWholesaleSales = () => {
+    if (!Array.isArray(bills) || bills.length === 0) return 0;
     return bills.filter((bill) => bill.category === "wholesale").reduce((total, bill) => total + Number(bill.price || 0), 0);
   };
 
@@ -85,16 +249,15 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <Button variant="ghost" size="sm" onClick={onBack} className="mr-2">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-            <div>
-              <CardTitle>Historical Day: {new Date(dayData.date).toLocaleDateString()}</CardTitle>
-              <CardDescription>Closed on {formatDate(closingData.date)}</CardDescription>
-            </div>
+          <div className="flex-col items-center">
+            <CardTitle>Date: {new Date(fullDayData.date).toLocaleDateString()}</CardTitle>
+            <CardDescription>Closed on {formatDate(closingData.date)}</CardDescription>
           </div>
+
+          <Button variant="outline" onClick={onBack}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Button>
         </div>
       </CardHeader>
 
@@ -117,7 +280,7 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
         {/* Summary Tab */}
         <TabsContent value="summary" className="mt-4">
           <Suspense fallback={<div>Loading summary...</div>}>
-            <DashboardSummary
+            {/* <DashboardSummary
               dailySetup={setup}
               bills={bills}
               getTotalInitialStock={getTotalInitialStock}
@@ -134,6 +297,21 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
               }
               getRemainingBirds={() => closingData.actualBirds}
               getCurrentEarnings={() => closingData.actualEarnings}
+              getRetailSales={getRetailSales}
+              getWholesaleSales={getWholesaleSales}
+            /> */}
+
+            <DashboardSummary
+              dailySetup={setup}
+              bills={bills}
+              getTotalInitialStock={getTotalInitialStock}
+              getSoldStockLiveWeight={getSoldStockLiveWeight}
+              getSoldStockMeatWeight={getSoldStockMeatWeight}
+              getRemainingStockLiveWeight={getRemainingStockLiveWeight}
+              getRemainingStockMeatWeight={getRemainingStockMeatWeight}
+              getTotalInitialStockInMeatWeight={getTotalInitialStockInMeatWeight}
+              getRemainingBirds={getRemainingBirds}
+              getCurrentEarnings={getCurrentEarnings}
               getRetailSales={getRetailSales}
               getWholesaleSales={getWholesaleSales}
             />
@@ -231,7 +409,19 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
         {/* Bills Tab */}
         <TabsContent value="bills" className="mt-4">
           <Suspense fallback={<div>Loading bills...</div>}>
-            <BillsTable bills={bills} isReadOnly={true} />
+            {bills && bills.length > 0 ? (
+              <BillsTable bills={bills} isReadOnly={true} />
+            ) : (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <div className="text-gray-500">
+                    <FileText className="h-12 w-12 mx-auto text-gray-300 mb-2" />
+                    <p className="mb-2">No bills data available for this day.</p>
+                    <p className="text-sm">The historical bill records may not have been properly saved with this closing data.</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </Suspense>
         </TabsContent>
 
@@ -374,7 +564,7 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
         </TabsContent>
       </Tabs>
 
-      <CardFooter className="flex justify-end">
+      <CardFooter className="flex justify-end mt-4">
         <Button variant="outline" onClick={onBack}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to History

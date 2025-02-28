@@ -210,10 +210,12 @@ const AdminDashboard = ({ logout }) => {
     return bills
       .reduce((total, bill) => {
         // For bills with weightType "meat", convert to live weight
-        if (bill.weightType === "meat") {
-          return total + Number(bill.inventoryWeight || 0) * MEAT_CONVERSION_FACTOR;
-        }
-        return total + Number(bill.inventoryWeight || 0);
+        // if (bill.weightType === "meat") {
+        //   return total + Number(bill.inventoryWeight || 0) * MEAT_CONVERSION_FACTOR;
+        // }
+        // return total + Number(bill.inventoryWeight || 0);
+
+        return total + Number(bill.rawWeight || 0);
       }, 0)
       .toFixed(3);
   };
