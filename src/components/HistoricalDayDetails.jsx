@@ -59,8 +59,10 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
 
     return bills
       .reduce((total, bill) => {
+        // For bills with weightType "live", convert to meat weight
         if (bill.weightType === "live") {
-          return total + Number(bill.inventoryWeight || 0) / MEAT_CONVERSION_FACTOR;
+          // return total + Number(bill.inventoryWeight || 0) / MEAT_CONVERSION_FACTOR;
+          return total + Number(bill.meatWeight || 0);
         }
         return total + Number(bill.inventoryWeight || 0);
       }, 0)

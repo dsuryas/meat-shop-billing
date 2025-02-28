@@ -276,18 +276,6 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
                   disabled={isComplete}
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium">Country Chicken Skin-out (₹/kg)</label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="Enter price"
-                  value={setupData.productPrices.countryChickenChopped}
-                  onChange={(e) => handleInputChange("countryChickenChopped", e.target.value, true)}
-                  className="mt-1"
-                  disabled={isComplete}
-                />
-              </div>
             </div>
           </div>
 

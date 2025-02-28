@@ -1,7 +1,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
 import { Button } from "./ui/button";
-import { LogOut } from "lucide-react";
+import { LogOut, History } from "lucide-react";
 import {
   getDailySetup,
   getBills,
@@ -13,7 +13,6 @@ import {
   getClosedDay,
   startNewDaySetup,
 } from "../utils/storage";
-import CloseDayModal from "./CloseDayModal";
 import { Input } from "./ui/input";
 
 const PriceManagement = React.lazy(() => import("./PriceManagement"));
@@ -27,6 +26,8 @@ const DayManagement = React.lazy(() => import("./DayManagement"));
 const DailySetup = React.lazy(() => import("./DailySetup"));
 const RegularCustomerForm = React.lazy(() => import("./RegularCustomerForm"));
 const DashboardSummary = React.lazy(() => import("./DashboardSummary"));
+const HistoricalDataTable = React.lazy(() => import("./HistoricalDataTable"));
+const HistoricalDayDetails = React.lazy(() => import("./HistoricalDayDetails"));
 
 const AdminDashboard = ({ logout }) => {
   const [activeTab, setActiveTab] = useState("home");
@@ -40,9 +41,11 @@ const AdminDashboard = ({ logout }) => {
   const [closedDayData, setClosedDayData] = useState(null);
   const [viewingClosedDay, setViewingClosedDay] = useState(false);
   const [showCloseDayModal, setShowCloseDayModal] = useState(false);
+  const [selectedHistoricalDay, setSelectedHistoricalDay] = useState(null);
 
   const TABS = [
     { id: "home", label: "Home" },
+    { id: "history", label: "History" },
     { id: "prices", label: "Prices" },
     { id: "products", label: "Products" },
     { id: "users", label: "Staff" },
@@ -95,9 +98,6 @@ const AdminDashboard = ({ logout }) => {
     if (viewingClosedDay) {
       // Switch to current day view if available
       const setup = getDailySetup();
-
-      console.log("Toggle day view check:", { setup, isvalid: isDaySetupValid(new Date()) });
-
       if (setup && isDaySetupValid(new Date())) {
         setViewingClosedDay(false);
         setDailySetup(setup);
@@ -120,11 +120,13 @@ const AdminDashboard = ({ logout }) => {
 
   const handleStartNewDay = (selectedDate) => {
     // Save reference to current data before clearing
-    startNewDaySetup(selectedDate);
+    startNewDaySetup();
 
     // Clear current setup
+    clearDaySetup();
     setDailySetup(null);
     setShowSetup(true);
+    setBills([]);
     setViewingClosedDay(false);
   };
 
@@ -164,22 +166,14 @@ const AdminDashboard = ({ logout }) => {
     setShowCloseDayModal(true);
   };
 
-  // Handle closing the day
-  const handleCloseDayConfirmed = async (closingData) => {
-    const saved = await saveDailyClosing(closingData);
-    if (saved) {
-      // Update the closed day data without clearing current setup
-      setClosedDayData({
-        date: closingData.date,
-        setup: dailySetup,
-        bills: bills,
-        closingData: closingData,
-      });
+  // Handle viewing historical day details
+  const handleViewHistoricalDay = (dayData) => {
+    setSelectedHistoricalDay(dayData);
+  };
 
-      // Show a flag indicating the day is closed
-      setViewingClosedDay(true);
-    }
-    setShowCloseDayModal(false);
+  // Handle returning from historical view
+  const handleBackFromHistorical = () => {
+    setSelectedHistoricalDay(null);
   };
 
   // Calculation utilities
@@ -194,16 +188,66 @@ const AdminDashboard = ({ logout }) => {
 
     return bills
       .reduce((total, bill) => {
-        // Use inventoryWeight directly for accurate stock tracking
+        // For bills with weightType "live", convert to meat weight
+        if (bill.weightType === "live") {
+          // return total + Number(bill.inventoryWeight || 0) / MEAT_CONVERSION_FACTOR;
+          return total + Number(bill.meatWeight || 0);
+        }
         return total + Number(bill.inventoryWeight || 0);
       }, 0)
-      .toFixed(2);
+      .toFixed(3);
   };
 
   const getRemainingStock = () => {
     const totalStock = getTotalInitialStock();
     const sold = getSoldStock();
     return Math.max(0, Number(totalStock) - Number(sold)).toFixed(2);
+  };
+
+  const getSoldStockLiveWeight = () => {
+    if (!Array.isArray(bills)) return 0;
+
+    return bills
+      .reduce((total, bill) => {
+        // For bills with weightType "meat", convert to live weight
+        if (bill.weightType === "meat") {
+          return total + Number(bill.inventoryWeight || 0) * MEAT_CONVERSION_FACTOR;
+        }
+        return total + Number(bill.inventoryWeight || 0);
+      }, 0)
+      .toFixed(3);
+  };
+
+  const getTotalInitialStockInMeatWeight = () => {
+    if (!dailySetup) return 0;
+    return (getTotalInitialStock() / MEAT_CONVERSION_FACTOR).toFixed(3);
+  };
+
+  const getSoldStockMeatWeight = () => {
+    if (!Array.isArray(bills)) return 0;
+
+    return bills
+      .reduce((total, bill) => {
+        // For bills with weightType "live", convert to meat weight
+        if (bill.weightType === "live") {
+          // return total + Number(bill.inventoryWeight || 0) / MEAT_CONVERSION_FACTOR;
+          return total + Number(bill.meatWeight || 0);
+        }
+        return total + Number(bill.inventoryWeight || 0);
+      }, 0)
+      .toFixed(3);
+  };
+
+  const getRemainingStockLiveWeight = () => {
+    const totalLive = getTotalInitialStock();
+    const soldLive = getSoldStockLiveWeight();
+    return Math.max(0, Number(totalLive) - Number(soldLive)).toFixed(3);
+  };
+
+  const getRemainingStockMeatWeight = () => {
+    const totalMeat = getTotalInitialStockInMeatWeight();
+    const soldMeat = getSoldStockMeatWeight();
+    return Math.max(0, Number(totalMeat) - Number(soldMeat)).toFixed(2);
   };
 
   const getCurrentEarnings = () => {
@@ -247,13 +291,13 @@ const AdminDashboard = ({ logout }) => {
   );
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-gray-100">
       <div className="bg-white shadow">
         {/* Navigation Bar */}
         <div className="p-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold">Admin Dashboard</h1>
           <div className="flex space-x-4">
-            {dailySetup && !viewingClosedDay && !closedDayData && (
+            {dailySetup && !viewingClosedDay && activeTab === "home" && (
               <Button variant="secondary" type="button" onClick={handleCloseDayClick}>
                 Close Day
               </Button>
@@ -271,7 +315,7 @@ const AdminDashboard = ({ logout }) => {
 
       <div className="p-6">
         {/* Day Status Banner */}
-        {viewingClosedDay && (
+        {viewingClosedDay && activeTab === "home" && (
           <div className="bg-amber-50 p-4 mb-6 rounded-lg border border-amber-200">
             <div className="flex justify-between items-center">
               <div>
@@ -301,7 +345,7 @@ const AdminDashboard = ({ logout }) => {
           <div className="space-y-6">
             {/* Dashboard Summary */}
             <Suspense fallback={<div>Loading summary...</div>}>
-              <DashboardSummary
+              {/* <DashboardSummary
                 dailySetup={dailySetup}
                 bills={bills}
                 getTotalInitialStock={getTotalInitialStock}
@@ -310,6 +354,21 @@ const AdminDashboard = ({ logout }) => {
                 getRemainingStockLiveWeight={getRemainingStock}
                 getRemainingStockMeatWeight={getRemainingStock}
                 getTotalInitialStockInMeatWeight={getTotalInitialStock}
+                getRemainingBirds={getRemainingBirds}
+                getCurrentEarnings={getCurrentEarnings}
+                getRetailSales={getRetailSales}
+                getWholesaleSales={getWholesaleSales}
+              /> */}
+
+              <DashboardSummary
+                dailySetup={dailySetup}
+                bills={bills}
+                getTotalInitialStock={getTotalInitialStock}
+                getSoldStockLiveWeight={getSoldStockLiveWeight}
+                getSoldStockMeatWeight={getSoldStockMeatWeight}
+                getRemainingStockLiveWeight={getRemainingStockLiveWeight}
+                getRemainingStockMeatWeight={getRemainingStockMeatWeight}
+                getTotalInitialStockInMeatWeight={getTotalInitialStockInMeatWeight}
                 getRemainingBirds={getRemainingBirds}
                 getCurrentEarnings={getCurrentEarnings}
                 getRetailSales={getRetailSales}
@@ -356,6 +415,16 @@ const AdminDashboard = ({ logout }) => {
               </Suspense>
             )}
           </div>
+        )}
+
+        {activeTab === "history" && (
+          <Suspense fallback={<div>Loading history...</div>}>
+            {selectedHistoricalDay ? (
+              <HistoricalDayDetails dayData={selectedHistoricalDay} onBack={handleBackFromHistorical} />
+            ) : (
+              <HistoricalDataTable onViewDay={handleViewHistoricalDay} />
+            )}
+          </Suspense>
         )}
 
         {activeTab === "prices" && (

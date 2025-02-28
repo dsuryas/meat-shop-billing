@@ -303,6 +303,7 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
       // Store the raw weight (live weight) and also the weight appropriate for inventory deduction
       rawWeight: Number(billData.weight),
       inventoryWeight: weightType === "meat" ? Number(billData.weight) / MEAT_CONVERSION_FACTOR : Number(billData.weight),
+      meatWeight: Number(billData.weight) / MEAT_CONVERSION_FACTOR,
       // Include conversion details if available
       withSkinWeight: calculateWithSkinWeight(billData.weight),
       withoutSkinWeight: calculateWithoutSkinWeight(billData.weight),

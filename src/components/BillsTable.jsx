@@ -4,6 +4,13 @@ import { Button } from "./ui/button";
 import { Receipt, Pencil } from "lucide-react";
 
 const BillsTable = ({ bills, onEditBill, isAdmin, isReadOnly = false }) => {
+  // Format the date and time for display
+  const formatDateTime = (timestamp) => {
+    if (!timestamp) return "-";
+    const date = new Date(timestamp);
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  };
+
   return (
     <Card>
       <div className="bg-white shadow rounded-lg overflow-hidden">
@@ -12,6 +19,7 @@ const BillsTable = ({ bills, onEditBill, isAdmin, isReadOnly = false }) => {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bill No</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date/Time</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
@@ -26,9 +34,10 @@ const BillsTable = ({ bills, onEditBill, isAdmin, isReadOnly = false }) => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {bills.map((bill) => (
+              {bills.map((bill, index) => (
                 <tr key={bill.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{bill.billNumber}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{index + 1}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDateTime(bill.timestamp)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div>{bill.customerName}</div>
                     <div className="text-xs text-gray-400">{bill.customerPhone}</div>
@@ -36,7 +45,10 @@ const BillsTable = ({ bills, onEditBill, isAdmin, isReadOnly = false }) => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{bill.category}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{bill.productType}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{Number(bill.weight).toFixed(2)} kg</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{Number(bill.inventoryWeight).toFixed(2)} kg</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{Number(bill.meatWeight || 0).toFixed(2)} kg</td>
+                  {/* <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {bill.rawWeight && bill.inventoryWeight ? Number(bill.inventoryWeight).toFixed(2) : (Number(bill.weight) / 1.45).toFixed(2)} kg
+                  </td> */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{bill.numberOfBirds}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">₹{Number(bill.basePrice).toFixed(2)}/kg</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
