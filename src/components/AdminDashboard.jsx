@@ -9,6 +9,7 @@ import {
   saveDailyClosing,
   clearDaySetup,
   MEAT_CONVERSION_FACTOR,
+  COUNTRY_MEAT_CONVERSION_FACTOR,
   isDaySetupValid,
   getClosedDay,
   startNewDaySetup,
@@ -28,6 +29,7 @@ const RegularCustomerForm = React.lazy(() => import("./RegularCustomerForm"));
 const DashboardSummary = React.lazy(() => import("./DashboardSummary"));
 const HistoricalDataTable = React.lazy(() => import("./HistoricalDataTable"));
 const HistoricalDayDetails = React.lazy(() => import("./HistoricalDayDetails"));
+const CloseDayModal = React.lazy(() => import("./CloseDayModal"));
 
 const AdminDashboard = ({ logout }) => {
   const [activeTab, setActiveTab] = useState("home");
@@ -176,7 +178,7 @@ const AdminDashboard = ({ logout }) => {
     setSelectedHistoricalDay(null);
   };
 
-  // Calculation utilities
+  // Broiler Calculation utilities
   const getTotalInitialStock = () => {
     if (!dailySetup) return 0;
     const liveWeight = Number(dailySetup.freshStock || 0) + Number(dailySetup.remainingStock || 0);
@@ -187,10 +189,10 @@ const AdminDashboard = ({ logout }) => {
     if (!Array.isArray(bills)) return 0;
 
     return bills
+      .filter((bill) => !bill.chickenType || bill.chickenType === "broiler")
       .reduce((total, bill) => {
         // For bills with weightType "live", convert to meat weight
         if (bill.weightType === "live") {
-          // return total + Number(bill.inventoryWeight || 0) / MEAT_CONVERSION_FACTOR;
           return total + Number(bill.meatWeight || 0);
         }
         return total + Number(bill.inventoryWeight || 0);
@@ -208,13 +210,8 @@ const AdminDashboard = ({ logout }) => {
     if (!Array.isArray(bills)) return 0;
 
     return bills
+      .filter((bill) => !bill.chickenType || bill.chickenType === "broiler")
       .reduce((total, bill) => {
-        // For bills with weightType "meat", convert to live weight
-        // if (bill.weightType === "meat") {
-        //   return total + Number(bill.inventoryWeight || 0) * MEAT_CONVERSION_FACTOR;
-        // }
-        // return total + Number(bill.inventoryWeight || 0);
-
         return total + Number(bill.rawWeight || 0);
       }, 0)
       .toFixed(3);
@@ -229,10 +226,10 @@ const AdminDashboard = ({ logout }) => {
     if (!Array.isArray(bills)) return 0;
 
     return bills
+      .filter((bill) => !bill.chickenType || bill.chickenType === "broiler")
       .reduce((total, bill) => {
         // For bills with weightType "live", convert to meat weight
         if (bill.weightType === "live") {
-          // return total + Number(bill.inventoryWeight || 0) / MEAT_CONVERSION_FACTOR;
           return total + Number(bill.meatWeight || 0);
         }
         return total + Number(bill.inventoryWeight || 0);
@@ -257,7 +254,7 @@ const AdminDashboard = ({ logout }) => {
   };
 
   const getTotalBirds = () => {
-    return bills.reduce((total, bill) => total + Number(bill?.numberOfBirds || 0), 0);
+    return bills.filter((bill) => !bill.chickenType || bill.chickenType === "broiler").reduce((total, bill) => total + Number(bill?.numberOfBirds || 0), 0);
   };
 
   const getRemainingBirds = () => {
@@ -267,11 +264,93 @@ const AdminDashboard = ({ logout }) => {
   };
 
   const getRetailSales = () => {
-    return bills.filter((bill) => bill.category === "retail").reduce((total, bill) => total + Number(bill.price || 0), 0);
+    return bills
+      .filter((bill) => bill.category === "retail" && (!bill.chickenType || bill.chickenType === "broiler"))
+      .reduce((total, bill) => total + Number(bill.price || 0), 0);
   };
 
   const getWholesaleSales = () => {
-    return bills.filter((bill) => bill.category === "wholesale").reduce((total, bill) => total + Number(bill.price || 0), 0);
+    return bills
+      .filter((bill) => bill.category === "wholesale" && (!bill.chickenType || bill.chickenType === "broiler"))
+      .reduce((total, bill) => total + Number(bill.price || 0), 0);
+  };
+
+  // Country chicken calculation utilities
+  const getTotalCountryInitialStock = () => {
+    if (!dailySetup) return 0;
+    return Number(dailySetup.countryFreshStock || 0) + Number(dailySetup.countryRemainingStock || 0);
+  };
+
+  const getTotalCountryInitialStockInMeatWeight = () => {
+    if (!dailySetup) return 0;
+    return (getTotalCountryInitialStock() / COUNTRY_MEAT_CONVERSION_FACTOR).toFixed(3);
+  };
+
+  const getSoldCountryStockLiveWeight = () => {
+    if (!Array.isArray(bills)) return 0;
+
+    return bills
+      .filter((bill) => bill.chickenType === "country")
+      .reduce((total, bill) => {
+        return total + Number(bill.rawWeight || 0);
+      }, 0)
+      .toFixed(3);
+  };
+
+  const getSoldCountryStockMeatWeight = () => {
+    if (!Array.isArray(bills)) return 0;
+
+    return bills
+      .filter((bill) => bill.chickenType === "country")
+      .reduce((total, bill) => {
+        if (bill.weightType === "live") {
+          return total + Number(bill.meatWeight || 0);
+        }
+        return total + Number(bill.inventoryWeight || 0);
+      }, 0)
+      .toFixed(3);
+  };
+
+  const getRemainingCountryStockLiveWeight = () => {
+    const totalCountryLive = getTotalCountryInitialStock();
+    const soldCountryLive = getSoldCountryStockLiveWeight();
+    return Math.max(0, Number(totalCountryLive) - Number(soldCountryLive)).toFixed(3);
+  };
+
+  const getRemainingCountryStockMeatWeight = () => {
+    const totalCountryMeat = getTotalCountryInitialStockInMeatWeight();
+    const soldCountryMeat = getSoldCountryStockMeatWeight();
+    return Math.max(0, Number(totalCountryMeat) - Number(soldCountryMeat)).toFixed(2);
+  };
+
+  const getCountryChickenBirdCount = () => {
+    return bills.filter((bill) => bill.chickenType === "country").reduce((total, bill) => total + Number(bill?.numberOfBirds || 0), 0);
+  };
+
+  const getRemainingCountryBirds = () => {
+    if (!dailySetup) return 0;
+    const totalInitialCountryBirds = Number(dailySetup.countryFreshBirds || 0) + Number(dailySetup.countryRemainingBirds || 0);
+    return totalInitialCountryBirds - getCountryChickenBirdCount();
+  };
+
+  const getCountryChickenSales = () => {
+    return bills
+      .filter((bill) => bill.chickenType === "country")
+      .reduce((total, bill) => total + Number(bill.price || 0), 0)
+      .toFixed(2);
+  };
+
+  const handleCloseDayConfirmed = async (closingData) => {
+    const saved = await saveDailyClosing(closingData);
+    if (saved) {
+      setClosedDayData({
+        date: closingData.date,
+        setup: dailySetup,
+        bills: bills,
+        closingData: closingData,
+      });
+    }
+    setShowCloseDayModal(false);
   };
 
   const renderTabs = () => (
@@ -347,21 +426,6 @@ const AdminDashboard = ({ logout }) => {
           <div className="space-y-6">
             {/* Dashboard Summary */}
             <Suspense fallback={<div>Loading summary...</div>}>
-              {/* <DashboardSummary
-                dailySetup={dailySetup}
-                bills={bills}
-                getTotalInitialStock={getTotalInitialStock}
-                getSoldStockLiveWeight={getSoldStock}
-                getSoldStockMeatWeight={getSoldStock}
-                getRemainingStockLiveWeight={getRemainingStock}
-                getRemainingStockMeatWeight={getRemainingStock}
-                getTotalInitialStockInMeatWeight={getTotalInitialStock}
-                getRemainingBirds={getRemainingBirds}
-                getCurrentEarnings={getCurrentEarnings}
-                getRetailSales={getRetailSales}
-                getWholesaleSales={getWholesaleSales}
-              /> */}
-
               <DashboardSummary
                 dailySetup={dailySetup}
                 bills={bills}
@@ -375,6 +439,14 @@ const AdminDashboard = ({ logout }) => {
                 getCurrentEarnings={getCurrentEarnings}
                 getRetailSales={getRetailSales}
                 getWholesaleSales={getWholesaleSales}
+                // Country chicken methods
+                getTotalCountryInitialStock={getTotalCountryInitialStock}
+                getSoldCountryStockLiveWeight={getSoldCountryStockLiveWeight}
+                getSoldCountryStockMeatWeight={getSoldCountryStockMeatWeight}
+                getRemainingCountryStockLiveWeight={getRemainingCountryStockLiveWeight}
+                getRemainingCountryStockMeatWeight={getRemainingCountryStockMeatWeight}
+                getRemainingCountryBirds={getRemainingCountryBirds}
+                getCountryChickenSales={getCountryChickenSales}
               />
             </Suspense>
 
@@ -385,6 +457,8 @@ const AdminDashboard = ({ logout }) => {
                 onStartNewDay={handleStartNewDay}
                 currentStock={getRemainingStock()}
                 remainingBirds={getRemainingBirds()}
+                currentCountryStock={getRemainingCountryStockLiveWeight()}
+                remainingCountryBirds={getRemainingCountryBirds()}
                 currentEarnings={getCurrentEarnings()}
                 estimatedEarnings={dailySetup.estimatedEarnings}
                 totalDiscounts={bills.reduce((total, bill) => total + Number(bill.discountPerKg || 0) * Number(bill.weight || 0), 0)}
@@ -408,6 +482,7 @@ const AdminDashboard = ({ logout }) => {
                     editData={editingBill}
                     weightType={dailySetup.estimationMethod === "liveRate" ? "live" : "meat"}
                     currentStock={getRemainingStock()}
+                    currentCountryStock={getRemainingCountryStockLiveWeight()}
                   />
                 </Suspense>
               </div>
@@ -474,6 +549,8 @@ const AdminDashboard = ({ logout }) => {
                 dailySetup={dailySetup}
                 currentStock={getRemainingStock()}
                 expectedBirds={getRemainingBirds()}
+                currentCountryStock={getRemainingCountryStockLiveWeight()}
+                expectedCountryBirds={getRemainingCountryBirds()}
                 currentEarnings={getCurrentEarnings()}
                 estimatedEarnings={dailySetup.estimatedEarnings}
                 totalDiscounts={bills.reduce((total, bill) => total + Number(bill.discountPerKg || 0) * Number(bill.weight || 0), 0)}

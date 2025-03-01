@@ -21,6 +21,7 @@ const BillsTable = ({ bills, onEditBill, isAdmin, isReadOnly = false }) => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bill No</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date/Time</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Live weight</th>
@@ -35,20 +36,26 @@ const BillsTable = ({ bills, onEditBill, isAdmin, isReadOnly = false }) => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {bills.map((bill, index) => (
-                <tr key={bill.id} className="hover:bg-gray-50">
+                <tr key={bill.id} className={`hover:bg-gray-50 ${bill.chickenType === "country" ? "bg-green-50" : ""}`}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{index + 1}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDateTime(bill.timestamp)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div>{bill.customerName}</div>
                     <div className="text-xs text-gray-400">{bill.customerPhone}</div>
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        bill.chickenType === "country" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
+                      }`}
+                    >
+                      {bill.chickenType === "country" ? "Country" : "Broiler"}
+                    </span>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{bill.category}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{bill.productType}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{Number(bill.weight).toFixed(2)} kg</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{Number(bill.meatWeight || 0).toFixed(2)} kg</td>
-                  {/* <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {bill.rawWeight && bill.inventoryWeight ? Number(bill.inventoryWeight).toFixed(2) : (Number(bill.weight) / 1.45).toFixed(2)} kg
-                  </td> */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{bill.numberOfBirds}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">₹{Number(bill.basePrice).toFixed(2)}/kg</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

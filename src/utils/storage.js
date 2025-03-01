@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
 };
 
 export const MEAT_CONVERSION_FACTOR = 1.45;
+export const COUNTRY_MEAT_CONVERSION_FACTOR = 1.35;
 
 // Daily Setup Functions
 export const saveDailySetup = (setupData) => {
@@ -257,4 +258,13 @@ export const formatDate = (dateString) => {
     hour: "2-digit",
     minute: "2-digit",
   });
+};
+
+// Country Chicken Utility Functions
+export const getBroilerBills = () => {
+  return getBills().filter((bill) => !bill.chickenType || bill.chickenType === "broiler");
+};
+
+export const getCountryChickenBills = () => {
+  return getBills().filter((bill) => bill.chickenType === "country");
 };

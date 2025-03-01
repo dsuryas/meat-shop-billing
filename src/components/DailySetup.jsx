@@ -14,19 +14,27 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
     paperRate: "",
     shopRate: "",
 
-    // Stock info
+    // Broiler Stock info
     freshStock: "",
     remainingStock: "",
     freshBirds: "",
     remainingBirds: "",
+
+    // Country Chicken Stock info
+    countryFreshStock: "",
+    countryRemainingStock: "",
+    countryFreshBirds: "",
+    countryRemainingBirds: "",
 
     // Product prices
     productPrices: {
       liveChicken: "",
       chickenWithSkin: "",
       choppedChicken: "",
+      // Country chicken prices
       countryChicken: "",
-      countryChickenChopped: "",
+      countryChickenWithSkin: "",
+      countryChickenMeat: "",
     },
 
     // Estimation method
@@ -51,17 +59,29 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
   };
 
   const calculateEstimatedEarnings = () => {
-    const totalStock = Number(setupData.freshStock || 0) + Number(setupData.remainingStock || 0);
+    const totalBroilerStock = Number(setupData.freshStock || 0) + Number(setupData.remainingStock || 0);
 
-    if (totalStock <= 0) return 0;
+    const totalCountryStock = Number(setupData.countryFreshStock || 0) + Number(setupData.countryRemainingStock || 0);
 
-    if (setupData.estimationMethod === "liveRate") {
-      const liveRate = Number(setupData.productPrices.liveChicken || 0);
-      return liveRate > 0 ? totalStock * liveRate : 0;
-    } else {
-      const shopRate = Number(setupData.shopRate || 0);
-      return shopRate > 0 ? (totalStock / 1.45) * shopRate : 0;
+    let broilerEarnings = 0;
+    let countryEarnings = 0;
+
+    if (totalBroilerStock > 0) {
+      if (setupData.estimationMethod === "liveRate") {
+        const liveRate = Number(setupData.productPrices.liveChicken || 0);
+        broilerEarnings = liveRate > 0 ? totalBroilerStock * liveRate : 0;
+      } else {
+        const shopRate = Number(setupData.shopRate || 0);
+        broilerEarnings = shopRate > 0 ? (totalBroilerStock / 1.45) * shopRate : 0;
+      }
     }
+
+    if (totalCountryStock > 0) {
+      const countryRate = Number(setupData.productPrices.countryChicken || 0);
+      countryEarnings = countryRate > 0 ? totalCountryStock * countryRate : 0;
+    }
+
+    return broilerEarnings + countryEarnings;
   };
 
   const handleSubmit = (e) => {
@@ -80,20 +100,38 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
     }
 
     // Validate stock and birds are at least 0 (not empty)
-    if (setupData.freshStock === "" || setupData.remainingStock === "" || setupData.freshBirds === "" || setupData.remainingBirds === "") {
+    if (
+      setupData.freshStock === "" ||
+      setupData.remainingStock === "" ||
+      setupData.freshBirds === "" ||
+      setupData.remainingBirds === "" ||
+      setupData.countryFreshStock === "" ||
+      setupData.countryRemainingStock === "" ||
+      setupData.countryFreshBirds === "" ||
+      setupData.countryRemainingBirds === ""
+    ) {
       setMessage("Stock and bird count cannot be empty. Use 0 if none.");
       return;
     }
 
     // Validate numbers are not negative
-    if (Number(setupData.freshStock) < 0 || Number(setupData.remainingStock) < 0 || Number(setupData.freshBirds) < 0 || Number(setupData.remainingBirds) < 0) {
+    if (
+      Number(setupData.freshStock) < 0 ||
+      Number(setupData.remainingStock) < 0 ||
+      Number(setupData.freshBirds) < 0 ||
+      Number(setupData.remainingBirds) < 0 ||
+      Number(setupData.countryFreshStock) < 0 ||
+      Number(setupData.countryRemainingStock) < 0 ||
+      Number(setupData.countryFreshBirds) < 0 ||
+      Number(setupData.countryRemainingBirds) < 0
+    ) {
       setMessage("Stock and bird count cannot be negative");
       return;
     }
 
     // Validate product prices
     if (!setupData.productPrices.liveChicken || !setupData.productPrices.chickenWithSkin) {
-      setMessage("Please fill all product prices");
+      setMessage("Please fill all broiler product prices");
       return;
     }
 
@@ -165,9 +203,9 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
             </div>
           </div>
 
-          {/* Stock Information */}
+          {/* Broiler Stock Information */}
           <div>
-            <h3 className="text-lg font-semibold mb-4">Stock Information</h3>
+            <h3 className="text-lg font-semibold mb-4">Broiler Stock Information</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-4">
                 <div>
@@ -222,9 +260,9 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
             </div>
           </div>
 
-          {/* Product Prices */}
+          {/* Broiler Product Prices */}
           <div>
-            <h3 className="text-lg font-semibold mb-4">Product Prices</h3>
+            <h3 className="text-lg font-semibold mb-4">Broiler Product Prices</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-sm font-medium">Live Chicken (₹/kg)</label>
@@ -252,7 +290,7 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
               </div>
               <div>
                 <label className="text-sm font-medium">
-                  Skin-out Chicken (₹/kg)
+                  Chopped Chicken (₹/kg)
                   <span className="text-xs text-gray-500 ml-2">(Shop rate)</span>
                 </label>
                 <Input
@@ -264,14 +302,102 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
                   disabled={true}
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Country Chicken Stock Information */}
+          <div>
+            <h3 className="text-lg font-semibold mb-4">Country Chicken Stock Information</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium">Fresh Stock Weight (kg)</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="Enter fresh stock weight"
+                    value={setupData.countryFreshStock}
+                    onChange={(e) => handleInputChange("countryFreshStock", e.target.value)}
+                    className="mt-1"
+                    disabled={isComplete}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Fresh Stock (Birds)</label>
+                  <Input
+                    type="number"
+                    placeholder="Enter number of birds"
+                    value={setupData.countryFreshBirds}
+                    onChange={(e) => handleInputChange("countryFreshBirds", e.target.value)}
+                    className="mt-1"
+                    disabled={isComplete}
+                  />
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium">Remaining Stock Weight (kg)</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="Enter remaining stock weight"
+                    value={setupData.countryRemainingStock}
+                    onChange={(e) => handleInputChange("countryRemainingStock", e.target.value)}
+                    className="mt-1"
+                    disabled={isComplete}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Remaining Stock (Birds)</label>
+                  <Input
+                    type="number"
+                    placeholder="Enter number of birds"
+                    value={setupData.countryRemainingBirds}
+                    onChange={(e) => handleInputChange("countryRemainingBirds", e.target.value)}
+                    className="mt-1"
+                    disabled={isComplete}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Country Chicken Product Prices */}
+          <div>
+            <h3 className="text-lg font-semibold mb-4">Country Chicken Product Prices</h3>
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium">Country Chicken (₹/kg)</label>
+                <label className="text-sm font-medium">Live Country Chicken (₹/kg)</label>
                 <Input
                   type="number"
                   step="0.01"
                   placeholder="Enter price"
                   value={setupData.productPrices.countryChicken}
                   onChange={(e) => handleInputChange("countryChicken", e.target.value, true)}
+                  className="mt-1"
+                  disabled={isComplete}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Country Chicken with Skin (₹/kg)</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="Enter price"
+                  value={setupData.productPrices.countryChickenWithSkin}
+                  onChange={(e) => handleInputChange("countryChickenWithSkin", e.target.value, true)}
+                  className="mt-1"
+                  disabled={isComplete}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Country Chicken Meat (₹/kg)</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="Enter price"
+                  value={setupData.productPrices.countryChickenMeat}
+                  onChange={(e) => handleInputChange("countryChickenMeat", e.target.value, true)}
                   className="mt-1"
                   disabled={isComplete}
                 />
@@ -311,70 +437,44 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
           </div>
 
           {/* Summary Information */}
-          {/* {setupData.freshStock !== "" && setupData.remainingStock !== "" && (
-            <div className="mt-4 p-4 bg-green-50 rounded-lg space-y-2">
-              <h3 className="text-lg font-semibold text-green-700">Summary</h3>
-              <div className="space-y-1 text-sm text-green-600">
-                <p>
-                  Total stock:{" "}
-                  {Number(setupData.freshStock) +
-                    Number(setupData.remainingStock)}
-                  kg
-                </p>
-                <p>
-                  Total birds:{" "}
-                  {Number(setupData.freshBirds) +
-                    Number(setupData.remainingBirds)}
-                </p>
-                {setupData.estimationMethod === "skinOutRate" && (
-                  <p>
-                    Estimated meat quantity:{" "}
-                    {(
-                      (Number(setupData.freshStock) +
-                        Number(setupData.remainingStock)) /
-                      1.45
-                    ).toFixed(2)}
-                    kg
-                  </p>
-                )}
-                {(setupData.estimationMethod === "liveRate" &&
-                  setupData.productPrices.liveChicken) ||
-                (setupData.estimationMethod === "skinOutRate" &&
-                  setupData.shopRate) ? (
-                  <p className="text-xl font-bold text-green-700 mt-2">
-                    Estimated Earnings: ₹
-                    {calculateEstimatedEarnings().toFixed(2)}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          )} */}
-
-          {/* Summary Information */}
-          {setupData.freshStock !== "" &&
-            setupData.remainingStock !== "" &&
-            ((setupData.estimationMethod === "liveRate" && setupData.productPrices.liveChicken) ||
-              (setupData.estimationMethod === "skinOutRate" && setupData.shopRate)) && (
+          {(setupData.freshStock !== "" && setupData.remainingStock !== "") ||
+            (setupData.countryFreshStock !== "" && setupData.countryRemainingStock !== "" && (
               <div className="mt-4 p-4 bg-green-50 rounded-lg space-y-2">
                 <h3 className="text-lg font-semibold text-green-700">Summary</h3>
                 <div className="space-y-1 text-sm text-green-600">
-                  <p>
-                    Total stock: {Number(setupData.freshStock) + Number(setupData.remainingStock)}
-                    kg
-                  </p>
-                  <p>Total birds: {Number(setupData.freshBirds) + Number(setupData.remainingBirds)}</p>
-                  {setupData.estimationMethod === "skinOutRate" && (
-                    <p>
-                      Estimated meat quantity: {((Number(setupData.freshStock) + Number(setupData.remainingStock)) / 1.45).toFixed(2)}
-                      kg
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="font-medium text-green-800">Broiler Chicken</p>
+                      <p>
+                        Total stock: {Number(setupData.freshStock || 0) + Number(setupData.remainingStock || 0)}
+                        kg
+                      </p>
+                      <p>Total birds: {Number(setupData.freshBirds || 0) + Number(setupData.remainingBirds || 0)}</p>
+                      {setupData.estimationMethod === "skinOutRate" && (
+                        <p>
+                          Estimated meat quantity: {((Number(setupData.freshStock || 0) + Number(setupData.remainingStock || 0)) / 1.45).toFixed(2)}
+                          kg
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-medium text-green-800">Country Chicken</p>
+                      <p>
+                        Total stock: {Number(setupData.countryFreshStock || 0) + Number(setupData.countryRemainingStock || 0)}
+                        kg
+                      </p>
+                      <p>Total birds: {Number(setupData.countryFreshBirds || 0) + Number(setupData.countryRemainingBirds || 0)}</p>
+                    </div>
+                  </div>
+                  {(Number(setupData.freshStock || 0) + Number(setupData.remainingStock || 0) > 0 ||
+                    Number(setupData.countryFreshStock || 0) + Number(setupData.countryRemainingStock || 0) > 0) && (
+                    <p className="text-xl font-bold text-green-700 mt-2 pt-2 border-t border-green-200">
+                      Estimated Earnings: ₹{calculateEstimatedEarnings().toFixed(2)}
                     </p>
-                  )}
-                  {Number(setupData.freshStock) + Number(setupData.remainingStock) > 0 && (
-                    <p className="text-xl font-bold text-green-700 mt-2">Estimated Earnings: ₹{calculateEstimatedEarnings().toFixed(2)}</p>
                   )}
                 </div>
               </div>
-            )}
+            ))}
 
           {!isComplete && (
             <div className="flex gap-4">

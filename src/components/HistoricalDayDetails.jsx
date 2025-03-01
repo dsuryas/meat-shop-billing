@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { ArrowLeft, FileText, BarChart2, ShoppingBag } from "lucide-react";
-import { formatDate, MEAT_CONVERSION_FACTOR, getClosedDay } from "../utils/storage";
+import { formatDate, MEAT_CONVERSION_FACTOR, COUNTRY_MEAT_CONVERSION_FACTOR, getClosedDay } from "../utils/storage";
 
 // Lazy-load components
 const BillsTable = React.lazy(() => import("./BillsTable"));
@@ -63,12 +63,18 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
             remainingStock: 0,
             freshBirds: 0,
             remainingBirds: 0,
+            countryFreshStock: 0,
+            countryRemainingStock: 0,
+            countryFreshBirds: 0,
+            countryRemainingBirds: 0,
             estimatedEarnings: normalizedData.closingData.estimatedEarnings || 0,
             productPrices: {
               liveChicken: 0,
               chickenWithSkin: 0,
               choppedChicken: 0,
               countryChicken: 0,
+              countryChickenWithSkin: 0,
+              countryChickenMeat: 0,
             },
           },
         });
@@ -126,51 +132,14 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
   const bills = fullDayData.bills || [];
   const setup = fullDayData.setup || {};
 
-  // Calculate metrics for the dashboard summary
+  // Broiler calculation utilities
   const getTotalInitialStock = () => {
     if (!setup) return 0;
     return Number(setup.freshStock || 0) + Number(setup.remainingStock || 0);
   };
 
-  // const getSoldStockLiveWeight = () => {
-  //   if (!Array.isArray(bills) || bills.length === 0) {
-  //     // If no bills, use the difference between expected and actual stock
-  //     return Math.max(0, Number(closingData.expectedStock || 0) - Number(closingData.actualStock || 0)).toFixed(3);
-  //   }
-
-  //   return bills
-  //     .reduce((total, bill) => {
-  //       if (bill.weightType === "meat") {
-  //         return total + Number(bill.inventoryWeight || 0) * MEAT_CONVERSION_FACTOR;
-  //       }
-  //       return total + Number(bill.inventoryWeight || 0);
-  //     }, 0)
-  //     .toFixed(3);
-  // };
-
-  // const getSoldStockMeatWeight = () => {
-  //   if (!Array.isArray(bills) || bills.length === 0) {
-  //     // If no bills, use the difference between expected and actual stock (and convert if needed)
-  //     const stockDiff = Math.max(0, Number(closingData.expectedStock || 0) - Number(closingData.actualStock || 0));
-  //     if (setup.estimationMethod === "liveRate") {
-  //       return (stockDiff / MEAT_CONVERSION_FACTOR).toFixed(3);
-  //     }
-  //     return stockDiff.toFixed(3);
-  //   }
-
-  //   return bills
-  //     .reduce((total, bill) => {
-  //       if (bill.weightType === "live") {
-  //         return total + Number(bill.inventoryWeight || 0) / MEAT_CONVERSION_FACTOR;
-  //       }
-  //       return total + Number(bill.inventoryWeight || 0);
-  //     }, 0)
-  //     .toFixed(3);
-  // };
-
   const getTotalInitialStockInMeatWeight = () => {
     if (!setup) return 0;
-
     return (getTotalInitialStock() / MEAT_CONVERSION_FACTOR).toFixed(3);
   };
 
@@ -178,13 +147,8 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
     if (!Array.isArray(bills)) return 0;
 
     return bills
+      .filter((bill) => !bill.chickenType || bill.chickenType === "broiler")
       .reduce((total, bill) => {
-        // For bills with weightType "meat", convert to live weight
-        // if (bill.weightType === "meat") {
-        //   return total + Number(bill.inventoryWeight || 0) * MEAT_CONVERSION_FACTOR;
-        // }
-        // return total + Number(bill.inventoryWeight || 0);
-
         return total + Number(bill.rawWeight || 0);
       }, 0)
       .toFixed(3);
@@ -194,10 +158,9 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
     if (!Array.isArray(bills)) return 0;
 
     return bills
+      .filter((bill) => !bill.chickenType || bill.chickenType === "broiler")
       .reduce((total, bill) => {
-        // For bills with weightType "live", convert to meat weight
         if (bill.weightType === "live") {
-          // return total + Number(bill.inventoryWeight || 0) / MEAT_CONVERSION_FACTOR;
           return total + Number(bill.meatWeight || 0);
         }
         return total + Number(bill.inventoryWeight || 0);
@@ -218,7 +181,7 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
   };
 
   const getTotalBirds = () => {
-    return bills.reduce((total, bill) => total + Number(bill?.numberOfBirds || 0), 0);
+    return bills.filter((bill) => !bill.chickenType || bill.chickenType === "broiler").reduce((total, bill) => total + Number(bill?.numberOfBirds || 0), 0);
   };
 
   const getRemainingBirds = () => {
@@ -227,6 +190,73 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
     return totalInitialBirds - getTotalBirds();
   };
 
+  // Country chicken calculation utilities
+  const getTotalCountryInitialStock = () => {
+    if (!setup) return 0;
+    return Number(setup.countryFreshStock || 0) + Number(setup.countryRemainingStock || 0);
+  };
+
+  const getTotalCountryInitialStockInMeatWeight = () => {
+    if (!setup) return 0;
+    return (getTotalCountryInitialStock() / COUNTRY_MEAT_CONVERSION_FACTOR).toFixed(3);
+  };
+
+  const getSoldCountryStockLiveWeight = () => {
+    if (!Array.isArray(bills)) return 0;
+
+    return bills
+      .filter((bill) => bill.chickenType === "country")
+      .reduce((total, bill) => {
+        return total + Number(bill.rawWeight || 0);
+      }, 0)
+      .toFixed(3);
+  };
+
+  const getSoldCountryStockMeatWeight = () => {
+    if (!Array.isArray(bills)) return 0;
+
+    return bills
+      .filter((bill) => bill.chickenType === "country")
+      .reduce((total, bill) => {
+        if (bill.weightType === "live") {
+          return total + Number(bill.meatWeight || 0);
+        }
+        return total + Number(bill.inventoryWeight || 0);
+      }, 0)
+      .toFixed(3);
+  };
+
+  const getRemainingCountryStockLiveWeight = () => {
+    if (closingData.actualCountryStock) {
+      return Number(closingData.actualCountryStock).toFixed(2);
+    }
+
+    const totalCountryLive = getTotalCountryInitialStock();
+    const soldCountryLive = getSoldCountryStockLiveWeight();
+    return Math.max(0, Number(totalCountryLive) - Number(soldCountryLive)).toFixed(3);
+  };
+
+  const getRemainingCountryStockMeatWeight = () => {
+    const totalCountryMeat = getTotalCountryInitialStockInMeatWeight();
+    const soldCountryMeat = getSoldCountryStockMeatWeight();
+    return Math.max(0, Number(totalCountryMeat) - Number(soldCountryMeat)).toFixed(2);
+  };
+
+  const getCountryChickenBirdCount = () => {
+    return bills.filter((bill) => bill.chickenType === "country").reduce((total, bill) => total + Number(bill?.numberOfBirds || 0), 0);
+  };
+
+  const getRemainingCountryBirds = () => {
+    if (closingData.actualCountryBirds) {
+      return Number(closingData.actualCountryBirds);
+    }
+
+    if (!setup) return 0;
+    const totalInitialCountryBirds = Number(setup.countryFreshBirds || 0) + Number(setup.countryRemainingBirds || 0);
+    return totalInitialCountryBirds - getCountryChickenBirdCount();
+  };
+
+  // Sales calculations
   const getCurrentEarnings = () => {
     if (!Array.isArray(bills) || bills.length === 0) {
       // If no bills, use the actual earnings from closing data
@@ -237,12 +267,21 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
 
   const getRetailSales = () => {
     if (!Array.isArray(bills) || bills.length === 0) return 0;
-    return bills.filter((bill) => bill.category === "retail").reduce((total, bill) => total + Number(bill.price || 0), 0);
+    return bills
+      .filter((bill) => bill.category === "retail" && (!bill.chickenType || bill.chickenType === "broiler"))
+      .reduce((total, bill) => total + Number(bill.price || 0), 0);
   };
 
   const getWholesaleSales = () => {
     if (!Array.isArray(bills) || bills.length === 0) return 0;
-    return bills.filter((bill) => bill.category === "wholesale").reduce((total, bill) => total + Number(bill.price || 0), 0);
+    return bills
+      .filter((bill) => bill.category === "wholesale" && (!bill.chickenType || bill.chickenType === "broiler"))
+      .reduce((total, bill) => total + Number(bill.price || 0), 0);
+  };
+
+  const getCountryChickenSales = () => {
+    if (!Array.isArray(bills) || bills.length === 0) return 0;
+    return bills.filter((bill) => bill.chickenType === "country").reduce((total, bill) => total + Number(bill.price || 0), 0);
   };
 
   return (
@@ -280,27 +319,6 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
         {/* Summary Tab */}
         <TabsContent value="summary" className="mt-4">
           <Suspense fallback={<div>Loading summary...</div>}>
-            {/* <DashboardSummary
-              dailySetup={setup}
-              bills={bills}
-              getTotalInitialStock={getTotalInitialStock}
-              getSoldStockLiveWeight={getSoldStockLiveWeight}
-              getSoldStockMeatWeight={getSoldStockMeatWeight}
-              getRemainingStockLiveWeight={() => Number(closingData.actualStock).toFixed(2)}
-              getRemainingStockMeatWeight={() =>
-                setup.estimationMethod === "liveRate"
-                  ? (Number(closingData.actualStock) / MEAT_CONVERSION_FACTOR).toFixed(2)
-                  : Number(closingData.actualStock).toFixed(2)
-              }
-              getTotalInitialStockInMeatWeight={() =>
-                setup.estimationMethod === "liveRate" ? (getTotalInitialStock() / MEAT_CONVERSION_FACTOR).toFixed(2) : getTotalInitialStock()
-              }
-              getRemainingBirds={() => closingData.actualBirds}
-              getCurrentEarnings={() => closingData.actualEarnings}
-              getRetailSales={getRetailSales}
-              getWholesaleSales={getWholesaleSales}
-            /> */}
-
             <DashboardSummary
               dailySetup={setup}
               bills={bills}
@@ -314,6 +332,14 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
               getCurrentEarnings={getCurrentEarnings}
               getRetailSales={getRetailSales}
               getWholesaleSales={getWholesaleSales}
+              // Country chicken methods
+              getTotalCountryInitialStock={getTotalCountryInitialStock}
+              getSoldCountryStockLiveWeight={getSoldCountryStockLiveWeight}
+              getSoldCountryStockMeatWeight={getSoldCountryStockMeatWeight}
+              getRemainingCountryStockLiveWeight={getRemainingCountryStockLiveWeight}
+              getRemainingCountryStockMeatWeight={getRemainingCountryStockMeatWeight}
+              getRemainingCountryBirds={getRemainingCountryBirds}
+              getCountryChickenSales={getCountryChickenSales}
             />
           </Suspense>
 
@@ -346,9 +372,10 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
               </CardContent>
             </Card>
 
+            {/* Broiler Stock Card */}
             <Card className="bg-green-50 border-green-100">
               <CardContent className="p-4">
-                <h3 className="text-sm font-semibold text-green-800 mb-2">Stock Overview</h3>
+                <h3 className="text-sm font-semibold text-green-800 mb-2">Broiler Stock Overview</h3>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-green-700">Expected Stock:</span>
@@ -371,30 +398,118 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
               </CardContent>
             </Card>
 
-            <Card className="bg-amber-50 border-amber-100">
-              <CardContent className="p-4">
-                <h3 className="text-sm font-semibold text-amber-800 mb-2">Bird Count</h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-amber-700">Expected Birds:</span>
-                    <span className="font-medium">{closingData.expectedBirds}</span>
+            {/* Country Chicken Card - Show if country chicken data exists */}
+            {closingData.expectedCountryStock ||
+            closingData.actualCountryStock ||
+            closingData.countryWeightLoss ||
+            setup.countryFreshStock ||
+            setup.countryRemainingStock ? (
+              <Card className="bg-emerald-50 border-emerald-100">
+                <CardContent className="p-4">
+                  <h3 className="text-sm font-semibold text-emerald-800 mb-2">Country Chicken Stock</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-emerald-700">Expected Stock:</span>
+                      <span className="font-medium">{Number(closingData.expectedCountryStock || getTotalCountryInitialStock()).toFixed(2)} kg</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-emerald-700">Actual Stock:</span>
+                      <span className="font-medium">{Number(closingData.actualCountryStock || getRemainingCountryStockLiveWeight()).toFixed(2)} kg</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-emerald-700">Weight Loss:</span>
+                      <span className="font-medium">{Number(closingData.countryWeightLoss || 0).toFixed(2)} kg</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-emerald-700">Loss Percentage:</span>
+                      <span className="font-medium">{Number(closingData.countryWeightLossPercentage || 0).toFixed(2)}%</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-amber-700">Actual Birds:</span>
-                    <span className="font-medium">{closingData.actualBirds}</span>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="bg-amber-50 border-amber-100">
+                <CardContent className="p-4">
+                  <h3 className="text-sm font-semibold text-amber-800 mb-2">Bird Count</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-amber-700">Expected Birds:</span>
+                      <span className="font-medium">{closingData.expectedBirds}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-amber-700">Actual Birds:</span>
+                      <span className="font-medium">{closingData.actualBirds}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-amber-700">Bird Loss:</span>
+                      <span className="font-medium">{closingData.birdLoss}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-amber-700">Loss Percentage:</span>
+                      <span className="font-medium">{Number(closingData.birdLossPercentage).toFixed(2)}%</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-amber-700">Bird Loss:</span>
-                    <span className="font-medium">{closingData.birdLoss}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-amber-700">Loss Percentage:</span>
-                    <span className="font-medium">{Number(closingData.birdLossPercentage).toFixed(2)}%</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
           </div>
+
+          {/* Bird count section - shown if country chicken exists */}
+          {(closingData.expectedCountryBirds ||
+            closingData.actualCountryBirds ||
+            closingData.countryBirdLoss ||
+            setup.countryFreshBirds ||
+            setup.countryRemainingBirds) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              <Card className="bg-amber-50 border-amber-100">
+                <CardContent className="p-4">
+                  <h3 className="text-sm font-semibold text-amber-800 mb-2">Broiler Bird Count</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-amber-700">Expected Birds:</span>
+                      <span className="font-medium">{closingData.expectedBirds}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-amber-700">Actual Birds:</span>
+                      <span className="font-medium">{closingData.actualBirds}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-amber-700">Bird Loss:</span>
+                      <span className="font-medium">{closingData.birdLoss}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-amber-700">Loss Percentage:</span>
+                      <span className="font-medium">{Number(closingData.birdLossPercentage).toFixed(2)}%</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-emerald-50 border-emerald-100">
+                <CardContent className="p-4">
+                  <h3 className="text-sm font-semibold text-emerald-800 mb-2">Country Chicken Bird Count</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-emerald-700">Expected Birds:</span>
+                      <span className="font-medium">{closingData.expectedCountryBirds || getRemainingCountryBirds()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-emerald-700">Actual Birds:</span>
+                      <span className="font-medium">{closingData.actualCountryBirds || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-emerald-700">Bird Loss:</span>
+                      <span className="font-medium">{closingData.countryBirdLoss || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-emerald-700">Loss Percentage:</span>
+                      <span className="font-medium">{Number(closingData.countryBirdLossPercentage || 0).toFixed(2)}%</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
           {closingData.expenseNotes && (
             <Card className="mt-4 border-purple-100">
@@ -428,21 +543,23 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
         {/* Stock Details Tab */}
         <TabsContent value="stock" className="mt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Initial Setup Section */}
             <Card>
               <CardHeader>
                 <CardTitle>Initial Setup</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
+                  {/* Broiler Stock Information */}
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500">Stock Information</h3>
+                    <h3 className="text-sm font-medium text-blue-700">Broiler Stock Information</h3>
                     <div className="grid grid-cols-2 gap-4 mt-2">
-                      <div className="border rounded p-3">
+                      <div className="border rounded p-3 border-blue-100">
                         <div className="text-xs text-gray-500">Fresh Stock</div>
                         <div className="text-lg font-semibold">{Number(setup.freshStock || 0).toFixed(2)} kg</div>
                         <div className="text-xs text-gray-400">{setup.freshBirds || 0} birds</div>
                       </div>
-                      <div className="border rounded p-3">
+                      <div className="border rounded p-3 border-blue-100">
                         <div className="text-xs text-gray-500">Remaining Stock</div>
                         <div className="text-lg font-semibold">{Number(setup.remainingStock || 0).toFixed(2)} kg</div>
                         <div className="text-xs text-gray-400">{setup.remainingBirds || 0} birds</div>
@@ -450,6 +567,26 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
                     </div>
                   </div>
 
+                  {/* Country Chicken Stock Information - Show if exists */}
+                  {(setup.countryFreshStock || setup.countryRemainingStock || setup.countryFreshBirds || setup.countryRemainingBirds) && (
+                    <div>
+                      <h3 className="text-sm font-medium text-green-700">Country Chicken Stock</h3>
+                      <div className="grid grid-cols-2 gap-4 mt-2">
+                        <div className="border rounded p-3 border-green-100">
+                          <div className="text-xs text-gray-500">Fresh Stock</div>
+                          <div className="text-lg font-semibold">{Number(setup.countryFreshStock || 0).toFixed(2)} kg</div>
+                          <div className="text-xs text-gray-400">{setup.countryFreshBirds || 0} birds</div>
+                        </div>
+                        <div className="border rounded p-3 border-green-100">
+                          <div className="text-xs text-gray-500">Remaining Stock</div>
+                          <div className="text-lg font-semibold">{Number(setup.countryRemainingStock || 0).toFixed(2)} kg</div>
+                          <div className="text-xs text-gray-400">{setup.countryRemainingBirds || 0} birds</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Rates Section */}
                   <div>
                     <h3 className="text-sm font-medium text-gray-500">Rates</h3>
                     <div className="grid grid-cols-2 gap-4 mt-2">
@@ -464,6 +601,7 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
                     </div>
                   </div>
 
+                  {/* Product Prices */}
                   <div>
                     <h3 className="text-sm font-medium text-gray-500">Product Prices</h3>
                     <div className="grid grid-cols-2 gap-4 mt-2">
@@ -480,14 +618,16 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
               </CardContent>
             </Card>
 
+            {/* Closing Data Section */}
             <Card>
               <CardHeader>
                 <CardTitle>Closing Data</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
+                  {/* Broiler Stock Comparison */}
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500">Stock Comparison</h3>
+                    <h3 className="text-sm font-medium text-blue-700">Broiler Stock Comparison</h3>
                     <div className="mt-2 border rounded-lg overflow-hidden">
                       <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
@@ -520,8 +660,46 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
                     </div>
                   </div>
 
+                  {/* Country Chicken Stock Comparison - Show if exists */}
+                  {(closingData.expectedCountryStock || closingData.actualCountryStock || closingData.countryWeightLoss) && (
+                    <div>
+                      <h3 className="text-sm font-medium text-green-700">Country Chicken Stock Comparison</h3>
+                      <div className="mt-2 border rounded-lg overflow-hidden">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Metric</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Expected</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Actual</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Difference</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            <tr>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">Stock (kg)</td>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{Number(closingData.expectedCountryStock || 0).toFixed(2)}</td>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{Number(closingData.actualCountryStock || 0).toFixed(2)}</td>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm text-red-500">
+                                {Number(closingData.countryWeightLoss || 0).toFixed(2)}({Number(closingData.countryWeightLossPercentage || 0).toFixed(1)}%)
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">Birds (count)</td>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{closingData.expectedCountryBirds || 0}</td>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{closingData.actualCountryBirds || 0}</td>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm text-red-500">
+                                {closingData.countryBirdLoss || 0}({Number(closingData.countryBirdLossPercentage || 0).toFixed(1)}%)
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Weight Details */}
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500">Weight Details</h3>
+                    <h3 className="text-sm font-medium text-gray-500">Broiler Weight Details</h3>
                     <div className="grid grid-cols-2 gap-4 mt-2">
                       <div className="border rounded p-3 bg-blue-50">
                         <div className="text-xs text-blue-700">Live Weight Loss</div>
@@ -536,6 +714,26 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
                     </div>
                   </div>
 
+                  {/* Country Chicken Weight Details - Show if exists */}
+                  {(closingData.countryWeightLoss || closingData.countryMeatWeightLoss) && (
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500">Country Chicken Weight Details</h3>
+                      <div className="grid grid-cols-2 gap-4 mt-2">
+                        <div className="border rounded p-3 bg-emerald-50">
+                          <div className="text-xs text-emerald-700">Live Weight Loss</div>
+                          <div className="text-lg font-semibold text-emerald-800">{Number(closingData.countryWeightLoss || 0).toFixed(2)} kg</div>
+                        </div>
+                        <div className="border rounded p-3 bg-teal-50">
+                          <div className="text-xs text-teal-700">Meat Weight Loss</div>
+                          <div className="text-lg font-semibold text-teal-800">
+                            {Number(closingData.countryMeatWeightLoss || closingData.countryWeightLoss / COUNTRY_MEAT_CONVERSION_FACTOR || 0).toFixed(2)} kg
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Financial Results */}
                   <div>
                     <h3 className="text-sm font-medium text-gray-500">Financial Results</h3>
                     <div className="grid grid-cols-2 gap-4 mt-2">
