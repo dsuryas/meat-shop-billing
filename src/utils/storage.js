@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
 
 // Default conversion rates - these are used if no custom values have been set
 const DEFAULT_CONVERSION_FACTORS = [
+  // Broiler Chicken Factors
   {
     id: "broilerMeatConversion",
     name: "Broiler Meat Conversion",
@@ -19,15 +20,59 @@ const DEFAULT_CONVERSION_FACTORS = [
     updatedAt: new Date().toISOString(),
     history: [],
     description: "Live weight to meat weight ratio for broiler chicken",
+    category: "broiler",
   },
   {
-    id: "countryChickenMeatConversion",
+    id: "broilerWithSkinConversion",
+    name: "Broiler With Skin Conversion",
+    value: 1.25,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    history: [],
+    description: "Live weight to with-skin weight ratio for broiler chicken",
+    category: "broiler",
+  },
+  {
+    id: "broilerWithoutSkinConversion",
+    name: "Broiler Without Skin Conversion",
+    value: 1.35,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    history: [],
+    description: "Live weight to without-skin weight ratio for broiler chicken",
+    category: "broiler",
+  },
+
+  // Country Chicken Factors
+  {
+    id: "countryMeatConversion",
     name: "Country Chicken Meat Conversion",
     value: 1.65,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     history: [],
     description: "Live weight to meat weight ratio for country chicken",
+    category: "country",
+  },
+  {
+    id: "countryWithSkinConversion",
+    name: "Country Chicken With Skin Conversion",
+    value: 1.45,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    history: [],
+    description: "Live weight to with-skin weight ratio for country chicken",
+    category: "country",
+  },
+  {
+    id: "countryWithoutSkinConversion",
+    name: "Country Chicken Without Skin Conversion",
+    value: 1.55,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    history: [],
+    description: "Live weight to without-skin weight ratio for country chicken",
+    category: "country",
   },
 ];
 
@@ -47,6 +92,12 @@ export const getConversionFactors = () => {
   }
 };
 
+// Function to get conversion factors by category
+export const getConversionFactorsByCategory = (category) => {
+  const allFactors = getConversionFactors();
+  return allFactors.filter((factor) => factor.category === category);
+};
+
 // Function to get a specific conversion factor by ID
 export const getConversionFactorById = (id) => {
   const factors = getConversionFactors();
@@ -57,7 +108,18 @@ export const getConversionFactorById = (id) => {
 // Function to get conversion factor value by ID
 export const getConversionFactorValue = (id) => {
   const factor = getConversionFactorById(id);
-  return factor ? factor.value : id === "broilerMeatConversion" ? 1.45 : 1.65;
+
+  // Default values if factor not found
+  const defaults = {
+    broilerMeatConversion: 1.45,
+    broilerWithSkinConversion: 1.25,
+    broilerWithoutSkinConversion: 1.35,
+    countryMeatConversion: 1.65,
+    countryWithSkinConversion: 1.45,
+    countryWithoutSkinConversion: 1.55,
+  };
+
+  return factor ? factor.value : defaults[id] || 1.0;
 };
 
 // Update a specific conversion factor
@@ -144,6 +206,7 @@ export const getAllConversionFactorHistory = () => {
       modifiedBy: factor.lastModifiedBy || "System",
       notes: factor.lastModifiedNotes || "Initial value",
       isCurrent: true,
+      category: factor.category,
     };
 
     // Map history entries
@@ -155,6 +218,7 @@ export const getAllConversionFactorHistory = () => {
       modifiedBy: entry.modifiedBy || "System",
       notes: entry.notes || "",
       isCurrent: false,
+      category: factor.category,
     }));
 
     return [currentEntry, ...historyEntries];
@@ -164,14 +228,29 @@ export const getAllConversionFactorHistory = () => {
   return history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 };
 
-// Helper functions that provide the actual conversion factors
-// These should be used throughout the application instead of hard-coded values
+// Helper functions for each conversion factor
 export const getBroilerMeatConversionFactor = () => {
   return getConversionFactorValue("broilerMeatConversion");
 };
 
+export const getBroilerWithSkinConversionFactor = () => {
+  return getConversionFactorValue("broilerWithSkinConversion");
+};
+
+export const getBroilerWithoutSkinConversionFactor = () => {
+  return getConversionFactorValue("broilerWithoutSkinConversion");
+};
+
 export const getCountryChickenMeatConversionFactor = () => {
-  return getConversionFactorValue("countryChickenMeatConversion");
+  return getConversionFactorValue("countryMeatConversion");
+};
+
+export const getCountryWithSkinConversionFactor = () => {
+  return getConversionFactorValue("countryWithSkinConversion");
+};
+
+export const getCountryWithoutSkinConversionFactor = () => {
+  return getConversionFactorValue("countryWithoutSkinConversion");
 };
 
 // For backwards compatibility
@@ -187,6 +266,7 @@ export const saveConversionRates = (rates, modifiedBy = null, notes = null) => {
   return updateConversionFactors(rates, modifiedBy, notes);
 };
 
+// For backwards compatibility
 export const getConversionRatesHistory = () => {
   return getAllConversionFactorHistory();
 };
