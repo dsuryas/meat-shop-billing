@@ -7,7 +7,7 @@ import { MEAT_CONVERSION_FACTOR, COUNTRY_MEAT_CONVERSION_FACTOR, getClosedDay } 
 import { calculateStock, calculateSales, formatDate, formatDateTime, formatCurrency } from "../utils/DashboardUtils";
 
 // Lazy-load components
-const BillsTable = React.lazy(() => import("./BillsTable"));
+const BillsTable = React.lazy(() => import("./Billing/BillsTable"));
 const DashboardSummary = React.lazy(() => import("./DashboardSummary"));
 
 const HistoricalDayDetails = ({ dayData, onBack }) => {

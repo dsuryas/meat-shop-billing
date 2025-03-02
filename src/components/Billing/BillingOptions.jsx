@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./ui/card";
-import { Button } from "./ui/button";
 import { ChevronRight } from "lucide-react";
+
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../ui/card";
+import { Button } from "../ui/button";
 
 const BillingOptions = ({ onSelectOption }) => {
   const [additionalProducts, setAdditionalProducts] = useState([]);
@@ -29,7 +30,7 @@ const BillingOptions = ({ onSelectOption }) => {
     {
       id: "countryChicken",
       name: "Country Chicken",
-      description: "Naatu Kozhi sales (live, with skin, and meat)",
+      description: "Naatu Kozhi sales (retail and wholesale)",
     },
   ];
 

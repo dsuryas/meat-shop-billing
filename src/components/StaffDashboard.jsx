@@ -20,9 +20,9 @@ import { calculateStock, calculateSales, isDayClosed } from "../utils/DashboardU
 
 // Lazy load components
 const DailySetup = React.lazy(() => import("./DailySetup"));
-const BillingForm = React.lazy(() => import("./BillingForm"));
-const BillingOptions = React.lazy(() => import("./BillingOptions"));
-const BillsTable = React.lazy(() => import("./BillsTable"));
+const BillingForm = React.lazy(() => import("./Billing/BillingForm"));
+const BillingOptions = React.lazy(() => import("./Billing/BillingOptions"));
+const BillsTable = React.lazy(() => import("./Billing/BillsTable"));
 const DayManagement = React.lazy(() => import("./DayManagement"));
 const CloseDayModal = React.lazy(() => import("./CloseDayModal"));
 const DashboardSummary = React.lazy(() => import("./DashboardSummary"));

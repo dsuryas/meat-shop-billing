@@ -1,7 +1,8 @@
 import React from "react";
-import { Card } from "./ui/card";
-import { Button } from "./ui/button";
 import { Receipt, Pencil } from "lucide-react";
+
+import { Card } from "../ui/card";
+import { Button } from "../ui/button";
 
 const BillsTable = ({ bills, onEditBill, isAdmin, isReadOnly = false }) => {
   // Format the date and time for display

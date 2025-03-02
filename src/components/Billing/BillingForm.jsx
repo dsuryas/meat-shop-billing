@@ -1,11 +1,29 @@
 import React, { useState, useEffect } from "react";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./ui/card";
-import { Input } from "./ui/input";
-import { Button } from "./ui/button";
-import { Alert, AlertDescription } from "./ui/alert";
-import { Select } from "./ui/select";
-import { getBroilerMeatConversionFactor, getCountryChickenMeatConversionFactor } from "../utils/storage";
-import ConversionFactorDisplay from "./ConversionFactorDisplay";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../ui/card";
+import { Input } from "../ui/input";
+import { Button } from "../ui/button";
+import { Alert, AlertDescription } from "../ui/alert";
+import { getBroilerMeatConversionFactor, getCountryChickenMeatConversionFactor } from "../../utils/storage";
+import ConversionFactorDisplay from "../ConversionRates/ConversionFactorDisplay";
+import ConversionDetails from "./ConversionDetails";
+import ProductTypeSelector from "./ProductTypeSelector";
+
+// Import utility functions
+import {
+  getBasePrice,
+  calculatePrice,
+  calculateDiscountFromPrice,
+  calculateWithSkinWeight,
+  calculateWithoutSkinWeight,
+  calculateWithSkinPricePerKg,
+  calculateWithoutSkinPricePerKg,
+  calculateWithSkinPrice,
+  calculateWithoutSkinPrice,
+  shouldShowConversions,
+  shouldShowChickenTypeSelector,
+  shouldShowSaleTypeSelector,
+  shouldShowWholesaleOptions,
+} from "./BillingUtilities";
 
 const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData, weightType, currentStock, currentCountryStock }) => {
   const [billData, setBillData] = useState({
@@ -20,13 +38,15 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
     paymentType: "cash", // cash, online, partial
     amountPaid: "",
     balanceAmount: "0",
-    // New fields for enhanced wholesale billing
+    // Fields for enhanced wholesale billing
     selectedCustomer: null,
     customerSellingPrice: "0",
     withSkinRate: "0",
     withoutSkinRate: "0",
     // Add chicken type field to distinguish between broiler and country chicken
     chickenType: billingOption.id === "countryChicken" ? "country" : "broiler",
+    // New field for country chicken sales type
+    saleType: billingOption.id === "countryChicken" ? "retail" : billingOption.id,
   });
 
   const [message, setMessage] = useState("");
@@ -40,6 +60,9 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
 
   // Dynamically select the conversion factor based on chicken type
   const CONVERSION_FACTOR = billData.chickenType === "country" ? conversionFactors.countryChicken : conversionFactors.broiler;
+
+  // Get base price for current configuration
+  const currentBasePrice = getBasePrice(billingOption, rates, billData.productType, billData.saleType, billData.chickenType);
 
   useEffect(() => {
     // If editing, populate form with existing data
@@ -75,91 +98,37 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
     }
   }, [billData.customerName, regularCustomers]);
 
-  const getBasePrice = (productType = billData.productType) => {
-    if (billingOption.type === "base") {
-      switch (billingOption.id) {
-        case "retail":
-          // For retail, price depends on product type
-          switch (productType) {
-            case "live":
-              return rates.productPrices.liveChicken;
-            case "withSkin":
-              return rates.productPrices.chickenWithSkin;
-            case "meat":
-              return rates.shopRate;
-            default:
-              return 0;
-          }
-        case "wholesale":
-          // For wholesale, we now support multiple product types
-          switch (productType) {
-            case "live":
-              return rates.paperRate;
-            case "meat":
-              return rates.shopRate;
-            default:
-              return rates.paperRate;
-          }
-        case "countryChicken":
-          return rates.productPrices.countryChicken;
-        default:
-          return 0;
-      }
-    } else {
-      // For additional products, get price based on retail/wholesale
-      const product = products.find((p) => p.id === billingOption.id);
-      return product ? (billData.category === "wholesale" ? product.wholesalePrice : product.retailPrice) : 0;
-    }
-  };
-
-  const calculatePrice = (weight, discountPerKg = billData.discountPerKg, productType = billData.productType) => {
-    // Get the base price based on current product type
-    const basePrice = getBasePrice(productType);
-
-    // For wholesale, add customer selling price if available
-    let finalBasePrice = basePrice;
-    if (billingOption.id === "wholesale" && Number(billData.customerSellingPrice) > 0) {
-      finalBasePrice = Number(basePrice) + Number(billData.customerSellingPrice);
-    }
-
-    const finalRatePerKg = Math.max(0, Number(finalBasePrice) - Number(discountPerKg || 0));
-
-    let calculatedWeight = Number(weight);
-
-    // Only convert to meat weight if product type is meat for retail broilers
-    if (billingOption.id === "retail" && productType === "meat") {
-      // Use the appropriate conversion factor based on chicken type
-      calculatedWeight = Math.round((calculatedWeight / CONVERSION_FACTOR) * 100) / 100;
-    }
-
-    return (calculatedWeight * finalRatePerKg).toFixed(2);
-  };
-
-  const calculateDiscountFromPrice = (price, weight) => {
-    const basePrice = getBasePrice();
-    // For wholesale, include customer selling price
-    let finalBasePrice = basePrice;
-    if (billingOption.id === "wholesale" && Number(billData.customerSellingPrice) > 0) {
-      finalBasePrice = Number(basePrice) + Number(billData.customerSellingPrice);
-    }
-
-    const totalBasePrice = weight * finalBasePrice;
-    const priceReduction = totalBasePrice - price;
-    return (priceReduction / weight).toFixed(2);
-  };
-
   const handleInputChange = (field, value) => {
     setBillData((prev) => {
       const newData = { ...prev, [field]: value };
 
-      // If chicken type is changed, update the conversion factor used in calculations
-      if (field === "chickenType") {
-        // No further action needed as CONVERSION_FACTOR is computed dynamically
+      // If sale type is changed, reset customer-specific data if changing from wholesale to retail
+      if (field === "saleType" && value === "retail" && prev.saleType === "wholesale") {
+        newData.selectedCustomer = null;
+        newData.customerSellingPrice = "0";
+        newData.withSkinRate = "0";
+        newData.withoutSkinRate = "0";
       }
 
-      // Auto-calculate price when weight, discount, product type, or customer selling price changes
-      if (field === "weight" || field === "discountPerKg" || field === "productType" || field === "customerSellingPrice" || field === "chickenType") {
-        const calculatedPrice = calculatePrice(newData.weight, newData.discountPerKg, field === "productType" ? value : newData.productType);
+      // Auto-calculate price when relevant fields change
+      if (
+        field === "weight" ||
+        field === "discountPerKg" ||
+        field === "productType" ||
+        field === "customerSellingPrice" ||
+        field === "chickenType" ||
+        field === "saleType"
+      ) {
+        const calculatedPrice = calculatePrice(
+          newData.weight,
+          newData.discountPerKg,
+          field === "productType" ? value : newData.productType,
+          field === "saleType" ? value : newData.saleType,
+          billingOption,
+          rates,
+          CONVERSION_FACTOR,
+          newData.customerSellingPrice
+        );
 
         newData.price = calculatedPrice;
         // If payment is partial, reset amount paid and balance
@@ -205,7 +174,16 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
     setShowCustomerDropdown(false);
 
     // Recalculate price with new customer selling price
-    const calculatedPrice = calculatePrice(billData.weight, billData.discountPerKg, billData.productType);
+    const calculatedPrice = calculatePrice(
+      billData.weight,
+      billData.discountPerKg,
+      billData.productType,
+      billData.saleType,
+      billingOption,
+      rates,
+      CONVERSION_FACTOR,
+      customer.sellingPrice
+    );
 
     setBillData((prev) => ({
       ...prev,
@@ -219,59 +197,6 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
       amountPaid: prev.paymentType === "partial" ? prev.amountPaid : calculatedPrice,
       balanceAmount: prev.paymentType === "partial" ? calculatedPrice : "0",
     }));
-  };
-
-  // Calculate conversion weights and prices
-  const calculateWithSkinWeight = (liveWeight) => {
-    if (!liveWeight || Number(liveWeight) <= 0 || !billData.withSkinRate || Number(billData.withSkinRate) <= 0) {
-      return "0.00";
-    }
-    return (Number(liveWeight) / Number(billData.withSkinRate)).toFixed(2);
-  };
-
-  const calculateWithoutSkinWeight = (liveWeight) => {
-    if (!liveWeight || Number(liveWeight) <= 0 || !billData.withoutSkinRate || Number(billData.withoutSkinRate) <= 0) {
-      return "0.00";
-    }
-    return (Number(liveWeight) / Number(billData.withoutSkinRate)).toFixed(2);
-  };
-
-  const calculateWithSkinPricePerKg = () => {
-    if (!billData.withSkinRate || Number(billData.withSkinRate) <= 0) {
-      return "0.00";
-    }
-    const basePrice = getBasePrice();
-    const customerPrice = Number(billData.customerSellingPrice) || 0;
-    const totalRatePerKg = Number(basePrice) + customerPrice - Number(billData.discountPerKg || 0);
-    return (totalRatePerKg * Number(billData.withSkinRate)).toFixed(2);
-  };
-
-  const calculateWithoutSkinPricePerKg = () => {
-    if (!billData.withoutSkinRate || Number(billData.withoutSkinRate) <= 0) {
-      return "0.00";
-    }
-    const basePrice = getBasePrice();
-    const customerPrice = Number(billData.customerSellingPrice) || 0;
-    const totalRatePerKg = Number(basePrice) + customerPrice - Number(billData.discountPerKg || 0);
-    return (totalRatePerKg * Number(billData.withoutSkinRate)).toFixed(2);
-  };
-
-  const calculateWithSkinPrice = (liveWeight) => {
-    if (!liveWeight || Number(liveWeight) <= 0 || !billData.withSkinRate || Number(billData.withSkinRate) <= 0) {
-      return "0.00";
-    }
-    const withSkinWeight = Number(liveWeight) / Number(billData.withSkinRate);
-    const pricePerKg = calculateWithSkinPricePerKg();
-    return (withSkinWeight * Number(pricePerKg)).toFixed(2);
-  };
-
-  const calculateWithoutSkinPrice = (liveWeight) => {
-    if (!liveWeight || Number(liveWeight) <= 0 || !billData.withoutSkinRate || Number(billData.withoutSkinRate) <= 0) {
-      return "0.00";
-    }
-    const withoutSkinWeight = Number(liveWeight) / Number(billData.withoutSkinRate);
-    const pricePerKg = calculateWithoutSkinPricePerKg();
-    return (withoutSkinWeight * Number(pricePerKg)).toFixed(2);
   };
 
   const handleSubmit = (e) => {
@@ -320,8 +245,8 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
 
     const billWithMetadata = {
       ...billData,
-      basePrice: getBasePrice(),
-      finalPricePerKg: Number(getBasePrice()) + Number(billData.customerSellingPrice || 0) - Number(billData.discountPerKg || 0),
+      basePrice: currentBasePrice,
+      finalPricePerKg: Number(currentBasePrice) + Number(billData.customerSellingPrice || 0) - Number(billData.discountPerKg || 0),
       productName: billingOption.name,
       weightType,
       // Store the raw weight (live weight) and also the weight appropriate for inventory deduction
@@ -329,12 +254,18 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
       inventoryWeight: weightType === "meat" ? Number(billData.weight) / CONVERSION_FACTOR : Number(billData.weight),
       meatWeight: Number(billData.weight) / CONVERSION_FACTOR,
       // Include conversion details if available
-      withSkinWeight: calculateWithSkinWeight(billData.weight),
-      withoutSkinWeight: calculateWithoutSkinWeight(billData.weight),
-      withSkinPrice: calculateWithSkinPrice(billData.weight),
-      withoutSkinPrice: calculateWithoutSkinPrice(billData.weight),
-      withSkinPricePerKg: calculateWithSkinPricePerKg(),
-      withoutSkinPricePerKg: calculateWithoutSkinPricePerKg(),
+      withSkinWeight: calculateWithSkinWeight(billData.weight, billData.withSkinRate),
+      withoutSkinWeight: calculateWithoutSkinWeight(billData.weight, billData.withoutSkinRate),
+      withSkinPrice: calculateWithSkinPrice(billData.weight, billData.withSkinRate, currentBasePrice, billData.customerSellingPrice, billData.discountPerKg),
+      withoutSkinPrice: calculateWithoutSkinPrice(
+        billData.weight,
+        billData.withoutSkinRate,
+        currentBasePrice,
+        billData.customerSellingPrice,
+        billData.discountPerKg
+      ),
+      withSkinPricePerKg: calculateWithSkinPricePerKg(billData.withSkinRate, currentBasePrice, billData.customerSellingPrice, billData.discountPerKg),
+      withoutSkinPricePerKg: calculateWithoutSkinPricePerKg(billData.withoutSkinRate, currentBasePrice, billData.customerSellingPrice, billData.discountPerKg),
       // Store the conversion factor used for this bill for reference
       usedConversionFactor: CONVERSION_FACTOR,
     };
@@ -342,23 +273,19 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
     onBillGenerate(billWithMetadata);
   };
 
-  // Determine if we should show the conversion details
-  const shouldShowConversions = () => {
-    return billingOption.id === "wholesale" && billData.selectedCustomer && Number(billData.withSkinRate) > 0 && Number(billData.withoutSkinRate) > 0;
-  };
-
-  // Add chicken type selector if this is needed
-  const shouldShowChickenTypeSelector = () => {
-    return billingOption.id !== "countryChicken"; // Only show selector if not already on country chicken
-  };
-
   return (
     <Card>
       <CardHeader>
         <CardTitle>Generate Bill - {billingOption.name}</CardTitle>
         <CardDescription>
-          Paper Rate: ₹{getBasePrice()}/kg
-          {Number(billData.customerSellingPrice) > 0 && <span> + Customer Price: ₹{billData.customerSellingPrice}/kg</span>}
+          {shouldShowWholesaleOptions(billingOption, billData.saleType) ? (
+            <>
+              Paper Rate: ₹{currentBasePrice}/kg
+              {Number(billData.customerSellingPrice) > 0 && <span> + Customer Price: ₹{billData.customerSellingPrice}/kg</span>}
+            </>
+          ) : (
+            <>Base Rate: ₹{currentBasePrice}/kg</>
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -374,7 +301,7 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
                 className="mt-1"
               />
               {/* Customer dropdown for wholesale */}
-              {billingOption.id === "wholesale" && showCustomerDropdown && (
+              {shouldShowWholesaleOptions(billingOption, billData.saleType) && showCustomerDropdown && (
                 <div className="absolute z-10 w-full bg-white mt-1 border rounded-md shadow-lg max-h-60 overflow-y-auto">
                   {filteredCustomers.map((customer) => (
                     <div key={customer.id} className="px-4 py-2 hover:bg-gray-100 cursor-pointer" onClick={() => handleSelectCustomer(customer)}>
@@ -397,7 +324,7 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
           </div>
 
           {/* Chicken Type Selector - Only if not already on country chicken */}
-          {shouldShowChickenTypeSelector() && (
+          {shouldShowChickenTypeSelector(billingOption) && (
             <div>
               <label className="text-sm font-medium">Chicken Type *</label>
               <select
@@ -415,8 +342,26 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
             </div>
           )}
 
+          {/* Sale Type Selector for Country Chicken */}
+          {shouldShowSaleTypeSelector(billingOption) && (
+            <div>
+              <label className="text-sm font-medium">Sale Type *</label>
+              <select
+                value={billData.saleType}
+                onChange={(e) => handleInputChange("saleType", e.target.value)}
+                className="w-full mt-1 px-3 py-2 border rounded-md"
+              >
+                <option value="retail">Retail</option>
+                <option value="wholesale">Wholesale</option>
+              </select>
+              <div className="mt-1 text-xs text-gray-500">
+                {billData.saleType === "retail" ? "Retail pricing for individual customers" : "Wholesale pricing for bulk orders"}
+              </div>
+            </div>
+          )}
+
           {/* Customer selling price for wholesale */}
-          {billingOption.id === "wholesale" && (
+          {shouldShowWholesaleOptions(billingOption, billData.saleType) && (
             <div className="space-y-2">
               <label className="text-sm font-medium">Customer Price (₹/kg)</label>
               <Input
@@ -431,36 +376,14 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
             </div>
           )}
 
-          {/* Product Type Selection for Retail */}
-          {billingOption.id === "retail" && (
-            <div>
-              <label className="text-sm font-medium">Product Type *</label>
-              <select
-                value={billData.productType}
-                onChange={(e) => handleInputChange("productType", e.target.value)}
-                className="w-full mt-1 px-3 py-2 border rounded-md"
-              >
-                <option value="live">Live Chicken (₹{rates.productPrices.liveChicken}/kg)</option>
-                <option value="withSkin">With Skin (₹{rates.productPrices.chickenWithSkin}/kg)</option>
-                <option value="meat">Meat (₹{rates.shopRate}/kg)</option>
-              </select>
-            </div>
-          )}
-
-          {/* Product Type Selection for Wholesale */}
-          {billingOption.id === "wholesale" && (
-            <div>
-              <label className="text-sm font-medium">Product Type *</label>
-              <select
-                value={billData.productType}
-                onChange={(e) => handleInputChange("productType", e.target.value)}
-                className="w-full mt-1 px-3 py-2 border rounded-md"
-              >
-                <option value="live">Live Chicken (₹{rates.paperRate}/kg)</option>
-                <option value="meat">Chopped Chicken (₹{rates.shopRate}/kg)</option>
-              </select>
-            </div>
-          )}
+          {/* Product Type Selection */}
+          <ProductTypeSelector
+            billingOption={billingOption}
+            rates={rates}
+            saleType={billData.saleType}
+            productType={billData.productType}
+            onChange={(value) => handleInputChange("productType", value)}
+          />
 
           {/* Weight, Birds, Discount and Price */}
           <div className="grid grid-cols-4 gap-4">
@@ -512,7 +435,14 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
 
                   // Calculate discount per kg based on entered price
                   if (weight > 0) {
-                    const newDiscountPerKg = calculateDiscountFromPrice(newPrice, weight);
+                    const newDiscountPerKg = calculateDiscountFromPrice(
+                      newPrice,
+                      weight,
+                      billingOption,
+                      billData.saleType,
+                      currentBasePrice,
+                      billData.customerSellingPrice
+                    );
                     handleInputChange("discountPerKg", newDiscountPerKg);
                   }
 
@@ -523,7 +453,7 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
             </div>
             {billData.discountPerKg && billData.weight && (
               <div className="col-span-4 text-sm text-gray-500">
-                Rate after discount: ₹{(Number(getBasePrice()) + Number(billData.customerSellingPrice || 0) - Number(billData.discountPerKg)).toFixed(2)}
+                Rate after discount: ₹{(Number(currentBasePrice) + Number(billData.customerSellingPrice || 0) - Number(billData.discountPerKg || 0)).toFixed(2)}
                 /kg
               </div>
             )}
@@ -538,81 +468,23 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
           </div>
 
           {/* Conversion Details for Wholesale */}
-          {shouldShowConversions() && (
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <h3 className="font-semibold text-blue-800 mb-3">Conversion Details</h3>
-              <div className="grid grid-cols-2 gap-6">
-                <div className="border-r border-blue-200 pr-4">
-                  <h4 className="font-medium text-blue-700 mb-2">With Skin</h4>
-                  <table className="w-full text-sm">
-                    <tbody>
-                      <tr className="border-b border-blue-100">
-                        <td className="py-1 text-blue-600 italic">Conversion Rate:</td>
-                        <td className="py-1 font-medium text-right">{billData.withSkinRate}</td>
-                      </tr>
-                      <tr className="border-b border-blue-100">
-                        <td className="py-1 text-blue-600 italic">Price Per Kg:</td>
-                        <td className="py-1 font-medium text-right">₹{calculateWithSkinPricePerKg()}</td>
-                      </tr>
-                      <tr className="border-b border-blue-100">
-                        <td className="py-1 text-blue-600 italic">Converted Weight:</td>
-                        <td className="py-1 font-medium text-right">{calculateWithSkinWeight(billData.weight)} kg</td>
-                      </tr>
-                      <tr>
-                        <td className="py-1 text-blue-600 italic">Total Price:</td>
-                        <td className="py-1 font-bold text-right">₹{calculateWithSkinPrice(billData.weight)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                <div>
-                  <h4 className="font-medium text-blue-700 mb-2">Without Skin</h4>
-                  <table className="w-full text-sm">
-                    <tbody>
-                      <tr className="border-b border-blue-100">
-                        <td className="py-1 text-blue-600 italic">Conversion Rate:</td>
-                        <td className="py-1 font-medium text-right">{billData.withoutSkinRate}</td>
-                      </tr>
-                      <tr className="border-b border-blue-100">
-                        <td className="py-1 text-blue-600 italic">Price Per Kg:</td>
-                        <td className="py-1 font-medium text-right">₹{calculateWithoutSkinPricePerKg()}</td>
-                      </tr>
-                      <tr className="border-b border-blue-100">
-                        <td className="py-1 text-blue-600 italic">Converted Weight:</td>
-                        <td className="py-1 font-medium text-right">{calculateWithoutSkinWeight(billData.weight)} kg</td>
-                      </tr>
-                      <tr>
-                        <td className="py-1 text-blue-600 italic">Total Price:</td>
-                        <td className="py-1 font-bold text-right">₹{calculateWithoutSkinPrice(billData.weight)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="mt-3 pt-2 border-t border-blue-200 text-xs text-blue-600">
-                <h4 className="text-sm text-blue-700 mb-2">Without Conversion</h4>
-                <div>
-                  Base Rate: ₹{getBasePrice()}/kg + Customer Price: ₹{billData.customerSellingPrice}/kg - Discount: ₹{billData.discountPerKg || 0}/kg
-                </div>
-                <div>
-                  Final Customer Price: ₹{(Number(getBasePrice()) + Number(billData.customerSellingPrice) - Number(billData.discountPerKg || 0)).toFixed(2)}
-                  /kg
-                </div>
-              </div>
-            </div>
+          {shouldShowConversions(billingOption, billData.saleType, billData.selectedCustomer, billData.withSkinRate, billData.withoutSkinRate) && (
+            <ConversionDetails billData={billData} basePrice={currentBasePrice} />
           )}
 
           {/* Payment Details */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium">Payment Type *</label>
-              <Select value={billData.paymentType} onChange={(e) => handleInputChange("paymentType", e.target.value)} className="mt-1">
+              <select
+                value={billData.paymentType}
+                onChange={(e) => handleInputChange("paymentType", e.target.value)}
+                className="w-full mt-1 px-3 py-2 border rounded-md"
+              >
                 <option value="cash">Cash</option>
                 <option value="online">Online</option>
                 <option value="partial">Partial</option>
-              </Select>
+              </select>
             </div>
             <div>
               <label className="text-sm font-medium">Amount Paid (₹) *</label>
@@ -637,7 +509,7 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
 
           <div className="flex gap-4">
             <Button type="submit" className="flex-1">
-              Generate Bill
+              {editData ? "Update Bill" : "Generate Bill"}
             </Button>
             <Button type="button" variant="outline" onClick={onCancel} className="flex-1">
               Cancel
