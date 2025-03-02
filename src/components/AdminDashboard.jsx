@@ -5,17 +5,19 @@ import { LogOut, History } from "lucide-react";
 import {
   getDailySetup,
   getBills,
+  getBillsForCurrentDay,
   updateBill,
   saveDailyClosing,
   clearDaySetup,
-  MEAT_CONVERSION_FACTOR,
-  COUNTRY_MEAT_CONVERSION_FACTOR,
   isDaySetupValid,
   getClosedDay,
   startNewDaySetup,
+  saveDailySetup,
 } from "../utils/storage";
 import { Input } from "./ui/input";
+import { calculateStock, calculateSales, isDayClosed } from "../utils/DashboardUtils";
 
+// Lazy load components
 const PriceManagement = React.lazy(() => import("./PriceManagement"));
 const UserManagement = React.lazy(() => import("./UserManagement"));
 const ProductManagement = React.lazy(() => import("./ProductManagement"));
@@ -30,6 +32,7 @@ const DashboardSummary = React.lazy(() => import("./DashboardSummary"));
 const HistoricalDataTable = React.lazy(() => import("./HistoricalDataTable"));
 const HistoricalDayDetails = React.lazy(() => import("./HistoricalDayDetails"));
 const CloseDayModal = React.lazy(() => import("./CloseDayModal"));
+const DayStatusBanner = React.lazy(() => import("./DayStatusBanner"));
 
 const AdminDashboard = ({ logout }) => {
   const [activeTab, setActiveTab] = useState("home");
@@ -44,6 +47,7 @@ const AdminDashboard = ({ logout }) => {
   const [viewingClosedDay, setViewingClosedDay] = useState(false);
   const [showCloseDayModal, setShowCloseDayModal] = useState(false);
   const [selectedHistoricalDay, setSelectedHistoricalDay] = useState(null);
+  const [dayIsClosed, setDayIsClosed] = useState(false);
 
   const TABS = [
     { id: "home", label: "Home" },
@@ -73,7 +77,7 @@ const AdminDashboard = ({ logout }) => {
     setClosedDayData(closedDay);
 
     // Get the current saved bills
-    const savedBills = getBills();
+    const savedBills = getBillsForCurrentDay();
     setBills(Array.isArray(savedBills) ? savedBills : []);
 
     // Get the daily setup
@@ -83,15 +87,18 @@ const AdminDashboard = ({ logout }) => {
     if (setup && isDaySetupValid(new Date())) {
       setDailySetup(setup);
       setViewingClosedDay(false);
+      setDayIsClosed(isDayClosed(setup));
     } else if (closedDay) {
       // If no current setup but we have closed day data, we can view that
       setViewingClosedDay(true);
       setDailySetup(closedDay.setup);
       setBills(closedDay.bills || []);
+      setDayIsClosed(true);
     } else {
       setShowSetup(true);
       setBills([]);
       setViewingClosedDay(false);
+      setDayIsClosed(false);
     }
   };
 
@@ -103,21 +110,25 @@ const AdminDashboard = ({ logout }) => {
       if (setup && isDaySetupValid(new Date())) {
         setViewingClosedDay(false);
         setDailySetup(setup);
-        const currentBills = getBills();
+        const currentBills = getBillsForCurrentDay();
         setBills(Array.isArray(currentBills) ? currentBills : []);
+        setDayIsClosed(isDayClosed(setup));
       }
     } else if (closedDayData) {
       // Switch to closed day view
       setViewingClosedDay(true);
       setDailySetup(closedDayData.setup);
       setBills(closedDayData.bills || []);
+      setDayIsClosed(true);
     }
   };
 
   const handleSetupComplete = (setupData) => {
-    setDailySetup(setupData);
+    const savedSetup = saveDailySetup(setupData);
+    setDailySetup(savedSetup);
     setShowSetup(false);
     setViewingClosedDay(false);
+    setDayIsClosed(false);
   };
 
   const handleStartNewDay = (selectedDate) => {
@@ -130,11 +141,12 @@ const AdminDashboard = ({ logout }) => {
     setShowSetup(true);
     setBills([]);
     setViewingClosedDay(false);
+    setDayIsClosed(false);
   };
 
   const handleEditBill = (bill) => {
-    if (viewingClosedDay) {
-      // Don't allow editing when viewing closed day
+    if (viewingClosedDay || dayIsClosed) {
+      // Don't allow editing when viewing closed day or day is closed
       return;
     }
     setEditingBill(bill);
@@ -164,13 +176,13 @@ const AdminDashboard = ({ logout }) => {
   const handleCloseDayClick = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    console.log("Close day clicked");
     setShowCloseDayModal(true);
   };
 
   // Handle viewing historical day details
   const handleViewHistoricalDay = (dayData) => {
     setSelectedHistoricalDay(dayData);
+    setActiveTab("history");
   };
 
   // Handle returning from historical view
@@ -178,177 +190,31 @@ const AdminDashboard = ({ logout }) => {
     setSelectedHistoricalDay(null);
   };
 
-  // Broiler Calculation utilities
-  const getTotalInitialStock = () => {
-    if (!dailySetup) return 0;
-    const liveWeight = Number(dailySetup.freshStock || 0) + Number(dailySetup.remainingStock || 0);
-    return dailySetup.estimationMethod === "liveRate" ? liveWeight : (liveWeight / MEAT_CONVERSION_FACTOR).toFixed(2);
-  };
+  // Get stock calculations
+  const stockCalculations = dailySetup ? calculateStock(dailySetup, bills) : {};
 
-  const getSoldStock = () => {
-    if (!Array.isArray(bills)) return 0;
+  // Get sales calculations
+  const salesCalculations = calculateSales(bills);
 
-    return bills
-      .filter((bill) => !bill.chickenType || bill.chickenType === "broiler")
-      .reduce((total, bill) => {
-        // For bills with weightType "live", convert to meat weight
-        if (bill.weightType === "live") {
-          return total + Number(bill.meatWeight || 0);
-        }
-        return total + Number(bill.inventoryWeight || 0);
-      }, 0)
-      .toFixed(3);
-  };
-
-  const getRemainingStock = () => {
-    const totalStock = getTotalInitialStock();
-    const sold = getSoldStock();
-    return Math.max(0, Number(totalStock) - Number(sold)).toFixed(2);
-  };
-
-  const getSoldStockLiveWeight = () => {
-    if (!Array.isArray(bills)) return 0;
-
-    return bills
-      .filter((bill) => !bill.chickenType || bill.chickenType === "broiler")
-      .reduce((total, bill) => {
-        return total + Number(bill.rawWeight || 0);
-      }, 0)
-      .toFixed(3);
-  };
-
-  const getTotalInitialStockInMeatWeight = () => {
-    if (!dailySetup) return 0;
-    return (getTotalInitialStock() / MEAT_CONVERSION_FACTOR).toFixed(3);
-  };
-
-  const getSoldStockMeatWeight = () => {
-    if (!Array.isArray(bills)) return 0;
-
-    return bills
-      .filter((bill) => !bill.chickenType || bill.chickenType === "broiler")
-      .reduce((total, bill) => {
-        // For bills with weightType "live", convert to meat weight
-        if (bill.weightType === "live") {
-          return total + Number(bill.meatWeight || 0);
-        }
-        return total + Number(bill.inventoryWeight || 0);
-      }, 0)
-      .toFixed(3);
-  };
-
-  const getRemainingStockLiveWeight = () => {
-    const totalLive = getTotalInitialStock();
-    const soldLive = getSoldStockLiveWeight();
-    return Math.max(0, Number(totalLive) - Number(soldLive)).toFixed(3);
-  };
-
-  const getRemainingStockMeatWeight = () => {
-    const totalMeat = getTotalInitialStockInMeatWeight();
-    const soldMeat = getSoldStockMeatWeight();
-    return Math.max(0, Number(totalMeat) - Number(soldMeat)).toFixed(2);
-  };
-
-  const getCurrentEarnings = () => {
-    return bills.reduce((total, bill) => total + Number(bill?.price || 0), 0);
-  };
-
-  const getTotalBirds = () => {
-    return bills.filter((bill) => !bill.chickenType || bill.chickenType === "broiler").reduce((total, bill) => total + Number(bill?.numberOfBirds || 0), 0);
-  };
-
-  const getRemainingBirds = () => {
-    if (!dailySetup) return 0;
-    const totalInitialBirds = Number(dailySetup.freshBirds || 0) + Number(dailySetup.remainingBirds || 0);
-    return totalInitialBirds - getTotalBirds();
-  };
-
-  const getRetailSales = () => {
-    return bills
-      .filter((bill) => bill.category === "retail" && (!bill.chickenType || bill.chickenType === "broiler"))
-      .reduce((total, bill) => total + Number(bill.price || 0), 0);
-  };
-
-  const getWholesaleSales = () => {
-    return bills
-      .filter((bill) => bill.category === "wholesale" && (!bill.chickenType || bill.chickenType === "broiler"))
-      .reduce((total, bill) => total + Number(bill.price || 0), 0);
-  };
-
-  // Country chicken calculation utilities
-  const getTotalCountryInitialStock = () => {
-    if (!dailySetup) return 0;
-    return Number(dailySetup.countryFreshStock || 0) + Number(dailySetup.countryRemainingStock || 0);
-  };
-
-  const getTotalCountryInitialStockInMeatWeight = () => {
-    if (!dailySetup) return 0;
-    return (getTotalCountryInitialStock() / COUNTRY_MEAT_CONVERSION_FACTOR).toFixed(3);
-  };
-
-  const getSoldCountryStockLiveWeight = () => {
-    if (!Array.isArray(bills)) return 0;
-
-    return bills
-      .filter((bill) => bill.chickenType === "country")
-      .reduce((total, bill) => {
-        return total + Number(bill.rawWeight || 0);
-      }, 0)
-      .toFixed(3);
-  };
-
-  const getSoldCountryStockMeatWeight = () => {
-    if (!Array.isArray(bills)) return 0;
-
-    return bills
-      .filter((bill) => bill.chickenType === "country")
-      .reduce((total, bill) => {
-        if (bill.weightType === "live") {
-          return total + Number(bill.meatWeight || 0);
-        }
-        return total + Number(bill.inventoryWeight || 0);
-      }, 0)
-      .toFixed(3);
-  };
-
-  const getRemainingCountryStockLiveWeight = () => {
-    const totalCountryLive = getTotalCountryInitialStock();
-    const soldCountryLive = getSoldCountryStockLiveWeight();
-    return Math.max(0, Number(totalCountryLive) - Number(soldCountryLive)).toFixed(3);
-  };
-
-  const getRemainingCountryStockMeatWeight = () => {
-    const totalCountryMeat = getTotalCountryInitialStockInMeatWeight();
-    const soldCountryMeat = getSoldCountryStockMeatWeight();
-    return Math.max(0, Number(totalCountryMeat) - Number(soldCountryMeat)).toFixed(2);
-  };
-
-  const getCountryChickenBirdCount = () => {
-    return bills.filter((bill) => bill.chickenType === "country").reduce((total, bill) => total + Number(bill?.numberOfBirds || 0), 0);
-  };
-
-  const getRemainingCountryBirds = () => {
-    if (!dailySetup) return 0;
-    const totalInitialCountryBirds = Number(dailySetup.countryFreshBirds || 0) + Number(dailySetup.countryRemainingBirds || 0);
-    return totalInitialCountryBirds - getCountryChickenBirdCount();
-  };
-
-  const getCountryChickenSales = () => {
-    return bills
-      .filter((bill) => bill.chickenType === "country")
-      .reduce((total, bill) => total + Number(bill.price || 0), 0)
-      .toFixed(2);
-  };
-
+  // Handle closing the day
   const handleCloseDayConfirmed = async (closingData) => {
     const saved = await saveDailyClosing(closingData);
     if (saved) {
+      // Update the closed day data
       setClosedDayData({
         date: closingData.date,
         setup: dailySetup,
         bills: bills,
         closingData: closingData,
       });
+
+      // Update daily setup to mark as closed
+      const updatedSetup = { ...dailySetup, hasClosedDay: true };
+      saveDailySetup(updatedSetup);
+      setDailySetup(updatedSetup);
+
+      // Set the day as closed
+      setDayIsClosed(true);
     }
     setShowCloseDayModal(false);
   };
@@ -378,7 +244,7 @@ const AdminDashboard = ({ logout }) => {
         <div className="p-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold">Admin Dashboard</h1>
           <div className="flex space-x-4">
-            {dailySetup && !viewingClosedDay && activeTab === "home" && (
+            {dailySetup && !viewingClosedDay && !dayIsClosed && activeTab === "home" && (
               <Button variant="secondary" type="button" onClick={handleCloseDayClick}>
                 Close Day
               </Button>
@@ -396,28 +262,26 @@ const AdminDashboard = ({ logout }) => {
 
       <div className="p-6">
         {/* Day Status Banner */}
-        {viewingClosedDay && activeTab === "home" && (
-          <div className="bg-amber-50 p-4 mb-6 rounded-lg border border-amber-200">
+        <Suspense fallback={<div>Loading banner...</div>}>
+          <DayStatusBanner
+            viewingClosedDay={viewingClosedDay}
+            closedDayData={closedDayData}
+            onStartNewDay={handleStartNewDay}
+            onToggleDayView={toggleDayView}
+          />
+        </Suspense>
+
+        {/* Show a notice if day is closed but not viewing closed day */}
+        {!viewingClosedDay && dayIsClosed && activeTab === "home" && (
+          <div className="bg-blue-50 p-4 mb-6 rounded-lg border border-blue-200">
             <div className="flex justify-between items-center">
               <div>
-                <h2 className="text-lg font-semibold text-amber-800">Viewing Closed Day: {new Date(closedDayData.date).toLocaleDateString()}</h2>
-                <p className="text-sm text-amber-700">This day has been closed. You are viewing historical data.</p>
+                <h2 className="text-lg font-semibold text-blue-800">Day is Closed</h2>
+                <p className="text-sm text-blue-700">This day has been closed. You can view data but cannot make changes.</p>
               </div>
-              <div className="flex space-x-2">
-                <Button variant="outline" onClick={() => setShowSetup(true)} className="bg-white">
-                  Start New Day
-                </Button>
-                {!viewingClosedDay && closedDayData && (
-                  <Button variant="outline" onClick={toggleDayView} className="bg-white">
-                    View Closed Day
-                  </Button>
-                )}
-                {viewingClosedDay && getDailySetup() && (
-                  <Button variant="outline" onClick={toggleDayView} className="bg-white">
-                    View Current Day
-                  </Button>
-                )}
-              </div>
+              <Button variant="outline" onClick={() => setShowSetup(true)} className="bg-white">
+                Start New Day
+              </Button>
             </div>
           </div>
         )}
@@ -429,24 +293,23 @@ const AdminDashboard = ({ logout }) => {
               <DashboardSummary
                 dailySetup={dailySetup}
                 bills={bills}
-                getTotalInitialStock={getTotalInitialStock}
-                getSoldStockLiveWeight={getSoldStockLiveWeight}
-                getSoldStockMeatWeight={getSoldStockMeatWeight}
-                getRemainingStockLiveWeight={getRemainingStockLiveWeight}
-                getRemainingStockMeatWeight={getRemainingStockMeatWeight}
-                getTotalInitialStockInMeatWeight={getTotalInitialStockInMeatWeight}
-                getRemainingBirds={getRemainingBirds}
-                getCurrentEarnings={getCurrentEarnings}
-                getRetailSales={getRetailSales}
-                getWholesaleSales={getWholesaleSales}
-                // Country chicken methods
-                getTotalCountryInitialStock={getTotalCountryInitialStock}
-                getSoldCountryStockLiveWeight={getSoldCountryStockLiveWeight}
-                getSoldCountryStockMeatWeight={getSoldCountryStockMeatWeight}
-                getRemainingCountryStockLiveWeight={getRemainingCountryStockLiveWeight}
-                getRemainingCountryStockMeatWeight={getRemainingCountryStockMeatWeight}
-                getRemainingCountryBirds={getRemainingCountryBirds}
-                getCountryChickenSales={getCountryChickenSales}
+                getTotalInitialStock={stockCalculations.getTotalInitialStock}
+                getSoldStockLiveWeight={stockCalculations.getSoldStockLiveWeight}
+                getSoldStockMeatWeight={stockCalculations.getSoldStockMeatWeight}
+                getRemainingStockLiveWeight={stockCalculations.getRemainingStockLiveWeight}
+                getRemainingStockMeatWeight={stockCalculations.getRemainingStockMeatWeight}
+                getTotalInitialStockInMeatWeight={stockCalculations.getTotalInitialStockInMeatWeight}
+                getRemainingBirds={stockCalculations.getRemainingBirds}
+                getCurrentEarnings={salesCalculations.getCurrentEarnings}
+                getRetailSales={salesCalculations.getRetailSales}
+                getWholesaleSales={salesCalculations.getWholesaleSales}
+                getTotalCountryInitialStock={stockCalculations.getTotalCountryInitialStock}
+                getSoldCountryStockLiveWeight={stockCalculations.getSoldCountryStockLiveWeight}
+                getSoldCountryStockMeatWeight={stockCalculations.getSoldCountryStockMeatWeight}
+                getRemainingCountryStockLiveWeight={stockCalculations.getRemainingCountryStockLiveWeight}
+                getRemainingCountryStockMeatWeight={stockCalculations.getRemainingCountryStockMeatWeight}
+                getRemainingCountryBirds={stockCalculations.getRemainingCountryBirds}
+                getCountryChickenSales={salesCalculations.getCountryChickenSales}
               />
             </Suspense>
 
@@ -455,13 +318,13 @@ const AdminDashboard = ({ logout }) => {
               <DayManagement
                 dailySetup={dailySetup}
                 onStartNewDay={handleStartNewDay}
-                currentStock={getRemainingStock()}
-                remainingBirds={getRemainingBirds()}
-                currentCountryStock={getRemainingCountryStockLiveWeight()}
-                remainingCountryBirds={getRemainingCountryBirds()}
-                currentEarnings={getCurrentEarnings()}
+                currentStock={stockCalculations.getRemainingStockLiveWeight()}
+                remainingBirds={stockCalculations.getRemainingBirds()}
+                currentCountryStock={stockCalculations.getRemainingCountryStockLiveWeight()}
+                remainingCountryBirds={stockCalculations.getRemainingCountryBirds()}
+                currentEarnings={salesCalculations.getCurrentEarnings()}
                 estimatedEarnings={dailySetup.estimatedEarnings}
-                totalDiscounts={bills.reduce((total, bill) => total + Number(bill.discountPerKg || 0) * Number(bill.weight || 0), 0)}
+                totalDiscounts={salesCalculations.getTotalDiscounts()}
               />
             </Suspense>
 
@@ -481,14 +344,14 @@ const AdminDashboard = ({ logout }) => {
                     onCancel={handleCancelEdit}
                     editData={editingBill}
                     weightType={dailySetup.estimationMethod === "liveRate" ? "live" : "meat"}
-                    currentStock={getRemainingStock()}
-                    currentCountryStock={getRemainingCountryStockLiveWeight()}
+                    currentStock={stockCalculations.getRemainingStockLiveWeight()}
+                    currentCountryStock={stockCalculations.getRemainingCountryStockLiveWeight()}
                   />
                 </Suspense>
               </div>
             ) : (
               <Suspense fallback={<div>Loading...</div>}>
-                <BillsTable bills={bills} onEditBill={handleEditBill} isAdmin={true} isReadOnly={viewingClosedDay} />
+                <BillsTable bills={bills} onEditBill={handleEditBill} isAdmin={true} isReadOnly={viewingClosedDay || dayIsClosed} />
               </Suspense>
             )}
           </div>
@@ -547,13 +410,13 @@ const AdminDashboard = ({ logout }) => {
             <Suspense fallback={<div>Loading...</div>}>
               <CloseDayModal
                 dailySetup={dailySetup}
-                currentStock={getRemainingStock()}
-                expectedBirds={getRemainingBirds()}
-                currentCountryStock={getRemainingCountryStockLiveWeight()}
-                expectedCountryBirds={getRemainingCountryBirds()}
-                currentEarnings={getCurrentEarnings()}
+                currentStock={stockCalculations.getRemainingStockLiveWeight()}
+                expectedBirds={stockCalculations.getRemainingBirds()}
+                currentCountryStock={stockCalculations.getRemainingCountryStockLiveWeight()}
+                expectedCountryBirds={stockCalculations.getRemainingCountryBirds()}
+                currentEarnings={salesCalculations.getCurrentEarnings()}
                 estimatedEarnings={dailySetup.estimatedEarnings}
-                totalDiscounts={bills.reduce((total, bill) => total + Number(bill.discountPerKg || 0) * Number(bill.weight || 0), 0)}
+                totalDiscounts={salesCalculations.getTotalDiscounts()}
                 onClose={() => setShowCloseDayModal(false)}
                 onConfirm={handleCloseDayConfirmed}
               />

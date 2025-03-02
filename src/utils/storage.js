@@ -58,6 +58,25 @@ export const getBills = () => {
   }
 };
 
+export const getBillsForCurrentDay = () => {
+  try {
+    const bills = getBills();
+    const setup = getDailySetup();
+
+    if (!setup) return bills; // If no setup, return all bills
+
+    const setupDate = new Date(setup.date).toISOString().split("T")[0];
+
+    return bills.filter((bill) => {
+      const billDate = new Date(bill.timestamp).toISOString().split("T")[0];
+      return billDate === setupDate;
+    });
+  } catch (error) {
+    console.error("Error filtering bills for current day:", error);
+    return [];
+  }
+};
+
 export const saveBills = (bills) => {
   localStorage.setItem(STORAGE_KEYS.BILLS, JSON.stringify(bills));
   return bills;
@@ -219,8 +238,9 @@ export const startNewDaySetup = () => {
       );
     }
 
-    // Clear current setup but don't remove bills
+    // Clear current setup AND bills
     localStorage.removeItem(STORAGE_KEYS.DAILY_SETUP);
+    localStorage.removeItem(STORAGE_KEYS.BILLS);
 
     return true;
   } catch (error) {

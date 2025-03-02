@@ -128,13 +128,13 @@ const CloseDayModal = ({
   };
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="max-h-[90vh] flex flex-col">
+      <CardHeader className="flex-shrink-0">
         <CardTitle>Close Day</CardTitle>
         <CardDescription>Enter final stock details for today</CardDescription>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <CardContent className="overflow-y-auto pb-0">
+        <form className="space-y-4">
           {/* Broiler Expected Stock Display */}
           <div className="bg-blue-50 p-4 rounded-lg space-y-2">
             <h3 className="font-semibold text-blue-800">Expected Remaining Broiler Stock</h3>
@@ -251,7 +251,7 @@ const CloseDayModal = ({
           )}
         </form>
       </CardContent>
-      <CardFooter className="flex justify-end space-x-4">
+      <CardFooter className="flex justify-end space-x-4 flex-shrink-0 mt-4 border-t pt-4">
         <Button variant="outline" onClick={onClose}>
           Cancel
         </Button>

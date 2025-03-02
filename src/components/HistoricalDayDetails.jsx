@@ -3,7 +3,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { ArrowLeft, FileText, BarChart2, ShoppingBag } from "lucide-react";
-import { formatDate, MEAT_CONVERSION_FACTOR, COUNTRY_MEAT_CONVERSION_FACTOR, getClosedDay } from "../utils/storage";
+import { MEAT_CONVERSION_FACTOR, COUNTRY_MEAT_CONVERSION_FACTOR, getClosedDay } from "../utils/storage";
+import { calculateStock, calculateSales, formatDate, formatDateTime, formatCurrency } from "../utils/DashboardUtils";
 
 // Lazy-load components
 const BillsTable = React.lazy(() => import("./BillsTable"));
@@ -132,156 +133,33 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
   const bills = fullDayData.bills || [];
   const setup = fullDayData.setup || {};
 
-  // Broiler calculation utilities
-  const getTotalInitialStock = () => {
-    if (!setup) return 0;
-    return Number(setup.freshStock || 0) + Number(setup.remainingStock || 0);
-  };
+  // Get stock calculations
+  const stockCalculations = calculateStock(setup, bills);
 
-  const getTotalInitialStockInMeatWeight = () => {
-    if (!setup) return 0;
-    return (getTotalInitialStock() / MEAT_CONVERSION_FACTOR).toFixed(3);
-  };
+  // Get sales calculations
+  const salesCalculations = calculateSales(bills);
 
-  const getSoldStockLiveWeight = () => {
-    if (!Array.isArray(bills)) return 0;
-
-    return bills
-      .filter((bill) => !bill.chickenType || bill.chickenType === "broiler")
-      .reduce((total, bill) => {
-        return total + Number(bill.rawWeight || 0);
-      }, 0)
-      .toFixed(3);
-  };
-
-  const getSoldStockMeatWeight = () => {
-    if (!Array.isArray(bills)) return 0;
-
-    return bills
-      .filter((bill) => !bill.chickenType || bill.chickenType === "broiler")
-      .reduce((total, bill) => {
-        if (bill.weightType === "live") {
-          return total + Number(bill.meatWeight || 0);
-        }
-        return total + Number(bill.inventoryWeight || 0);
-      }, 0)
-      .toFixed(3);
-  };
-
-  const getRemainingStockLiveWeight = () => {
-    const totalLive = getTotalInitialStock();
-    const soldLive = getSoldStockLiveWeight();
-    return Math.max(0, Number(totalLive) - Number(soldLive)).toFixed(3);
-  };
-
-  const getRemainingStockMeatWeight = () => {
-    const totalMeat = getTotalInitialStockInMeatWeight();
-    const soldMeat = getSoldStockMeatWeight();
-    return Math.max(0, Number(totalMeat) - Number(soldMeat)).toFixed(2);
-  };
-
-  const getTotalBirds = () => {
-    return bills.filter((bill) => !bill.chickenType || bill.chickenType === "broiler").reduce((total, bill) => total + Number(bill?.numberOfBirds || 0), 0);
-  };
-
-  const getRemainingBirds = () => {
-    if (!setup) return 0;
-    const totalInitialBirds = Number(setup.freshBirds || 0) + Number(setup.remainingBirds || 0);
-    return totalInitialBirds - getTotalBirds();
-  };
-
-  // Country chicken calculation utilities
-  const getTotalCountryInitialStock = () => {
-    if (!setup) return 0;
-    return Number(setup.countryFreshStock || 0) + Number(setup.countryRemainingStock || 0);
-  };
-
-  const getTotalCountryInitialStockInMeatWeight = () => {
-    if (!setup) return 0;
-    return (getTotalCountryInitialStock() / COUNTRY_MEAT_CONVERSION_FACTOR).toFixed(3);
-  };
-
-  const getSoldCountryStockLiveWeight = () => {
-    if (!Array.isArray(bills)) return 0;
-
-    return bills
-      .filter((bill) => bill.chickenType === "country")
-      .reduce((total, bill) => {
-        return total + Number(bill.rawWeight || 0);
-      }, 0)
-      .toFixed(3);
-  };
-
-  const getSoldCountryStockMeatWeight = () => {
-    if (!Array.isArray(bills)) return 0;
-
-    return bills
-      .filter((bill) => bill.chickenType === "country")
-      .reduce((total, bill) => {
-        if (bill.weightType === "live") {
-          return total + Number(bill.meatWeight || 0);
-        }
-        return total + Number(bill.inventoryWeight || 0);
-      }, 0)
-      .toFixed(3);
-  };
-
+  // Handle special case for closed day actual stock
   const getRemainingCountryStockLiveWeight = () => {
     if (closingData.actualCountryStock) {
       return Number(closingData.actualCountryStock).toFixed(2);
     }
-
-    const totalCountryLive = getTotalCountryInitialStock();
-    const soldCountryLive = getSoldCountryStockLiveWeight();
-    return Math.max(0, Number(totalCountryLive) - Number(soldCountryLive)).toFixed(3);
-  };
-
-  const getRemainingCountryStockMeatWeight = () => {
-    const totalCountryMeat = getTotalCountryInitialStockInMeatWeight();
-    const soldCountryMeat = getSoldCountryStockMeatWeight();
-    return Math.max(0, Number(totalCountryMeat) - Number(soldCountryMeat)).toFixed(2);
-  };
-
-  const getCountryChickenBirdCount = () => {
-    return bills.filter((bill) => bill.chickenType === "country").reduce((total, bill) => total + Number(bill?.numberOfBirds || 0), 0);
+    return stockCalculations.getRemainingCountryStockLiveWeight();
   };
 
   const getRemainingCountryBirds = () => {
     if (closingData.actualCountryBirds) {
       return Number(closingData.actualCountryBirds);
     }
-
-    if (!setup) return 0;
-    const totalInitialCountryBirds = Number(setup.countryFreshBirds || 0) + Number(setup.countryRemainingBirds || 0);
-    return totalInitialCountryBirds - getCountryChickenBirdCount();
+    return stockCalculations.getRemainingCountryBirds();
   };
 
-  // Sales calculations
+  // Get current earnings from closing data if no bills
   const getCurrentEarnings = () => {
     if (!Array.isArray(bills) || bills.length === 0) {
-      // If no bills, use the actual earnings from closing data
       return Number(closingData.actualEarnings || 0);
     }
-    return bills.reduce((total, bill) => total + Number(bill?.price || 0), 0);
-  };
-
-  const getRetailSales = () => {
-    if (!Array.isArray(bills) || bills.length === 0) return 0;
-    return bills
-      .filter((bill) => bill.category === "retail" && (!bill.chickenType || bill.chickenType === "broiler"))
-      .reduce((total, bill) => total + Number(bill.price || 0), 0);
-  };
-
-  const getWholesaleSales = () => {
-    if (!Array.isArray(bills) || bills.length === 0) return 0;
-    return bills
-      .filter((bill) => bill.category === "wholesale" && (!bill.chickenType || bill.chickenType === "broiler"))
-      .reduce((total, bill) => total + Number(bill.price || 0), 0);
-  };
-
-  const getCountryChickenSales = () => {
-    if (!Array.isArray(bills) || bills.length === 0) return 0;
-    return bills.filter((bill) => bill.chickenType === "country").reduce((total, bill) => total + Number(bill.price || 0), 0);
+    return salesCalculations.getCurrentEarnings();
   };
 
   return (
@@ -289,8 +167,8 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex-col items-center">
-            <CardTitle>Date: {new Date(fullDayData.date).toLocaleDateString()}</CardTitle>
-            <CardDescription>Closed on {formatDate(closingData.date)}</CardDescription>
+            <CardTitle>Date: {formatDate(fullDayData.date)}</CardTitle>
+            <CardDescription>Closed on {formatDateTime(closingData.date)}</CardDescription>
           </div>
 
           <Button variant="outline" onClick={onBack}>
@@ -322,24 +200,24 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
             <DashboardSummary
               dailySetup={setup}
               bills={bills}
-              getTotalInitialStock={getTotalInitialStock}
-              getSoldStockLiveWeight={getSoldStockLiveWeight}
-              getSoldStockMeatWeight={getSoldStockMeatWeight}
-              getRemainingStockLiveWeight={getRemainingStockLiveWeight}
-              getRemainingStockMeatWeight={getRemainingStockMeatWeight}
-              getTotalInitialStockInMeatWeight={getTotalInitialStockInMeatWeight}
-              getRemainingBirds={getRemainingBirds}
+              getTotalInitialStock={stockCalculations.getTotalInitialStock}
+              getSoldStockLiveWeight={stockCalculations.getSoldStockLiveWeight}
+              getSoldStockMeatWeight={stockCalculations.getSoldStockMeatWeight}
+              getRemainingStockLiveWeight={stockCalculations.getRemainingStockLiveWeight}
+              getRemainingStockMeatWeight={stockCalculations.getRemainingStockMeatWeight}
+              getTotalInitialStockInMeatWeight={stockCalculations.getTotalInitialStockInMeatWeight}
+              getRemainingBirds={stockCalculations.getRemainingBirds}
               getCurrentEarnings={getCurrentEarnings}
-              getRetailSales={getRetailSales}
-              getWholesaleSales={getWholesaleSales}
+              getRetailSales={salesCalculations.getRetailSales}
+              getWholesaleSales={salesCalculations.getWholesaleSales}
               // Country chicken methods
-              getTotalCountryInitialStock={getTotalCountryInitialStock}
-              getSoldCountryStockLiveWeight={getSoldCountryStockLiveWeight}
-              getSoldCountryStockMeatWeight={getSoldCountryStockMeatWeight}
+              getTotalCountryInitialStock={stockCalculations.getTotalCountryInitialStock}
+              getSoldCountryStockLiveWeight={stockCalculations.getSoldCountryStockLiveWeight}
+              getSoldCountryStockMeatWeight={stockCalculations.getSoldCountryStockMeatWeight}
               getRemainingCountryStockLiveWeight={getRemainingCountryStockLiveWeight}
-              getRemainingCountryStockMeatWeight={getRemainingCountryStockMeatWeight}
+              getRemainingCountryStockMeatWeight={stockCalculations.getRemainingCountryStockMeatWeight}
               getRemainingCountryBirds={getRemainingCountryBirds}
-              getCountryChickenSales={getCountryChickenSales}
+              getCountryChickenSales={salesCalculations.getCountryChickenSales}
             />
           </Suspense>
 
@@ -350,23 +228,23 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-blue-700">Estimated Earnings:</span>
-                    <span className="font-medium">₹{Number(closingData.estimatedEarnings).toFixed(2)}</span>
+                    <span className="font-medium">{formatCurrency(closingData.estimatedEarnings)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-blue-700">Actual Earnings:</span>
-                    <span className="font-medium">₹{Number(closingData.actualEarnings).toFixed(2)}</span>
+                    <span className="font-medium">{formatCurrency(closingData.actualEarnings)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-blue-700">Total Discounts:</span>
-                    <span className="font-medium">₹{Number(closingData.totalDiscounts || 0).toFixed(2)}</span>
+                    <span className="font-medium">{formatCurrency(closingData.totalDiscounts || 0)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-blue-700">Expenses:</span>
-                    <span className="font-medium">₹{Number(closingData.expenses || 0).toFixed(2)}</span>
+                    <span className="font-medium">{formatCurrency(closingData.expenses || 0)}</span>
                   </div>
                   <div className="flex justify-between pt-2 border-t border-blue-200">
                     <span className="text-blue-800 font-medium">Net Earnings:</span>
-                    <span className="font-bold text-blue-800">₹{Number(closingData.netEarnings).toFixed(2)}</span>
+                    <span className="font-bold text-blue-800">{formatCurrency(closingData.netEarnings)}</span>
                   </div>
                 </div>
               </CardContent>
@@ -410,7 +288,9 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-emerald-700">Expected Stock:</span>
-                      <span className="font-medium">{Number(closingData.expectedCountryStock || getTotalCountryInitialStock()).toFixed(2)} kg</span>
+                      <span className="font-medium">
+                        {Number(closingData.expectedCountryStock || stockCalculations.getTotalCountryInitialStock()).toFixed(2)} kg
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-emerald-700">Actual Stock:</span>
@@ -592,11 +472,11 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
                     <div className="grid grid-cols-2 gap-4 mt-2">
                       <div className="border rounded p-3">
                         <div className="text-xs text-gray-500">Paper Rate</div>
-                        <div className="text-lg font-semibold">₹{Number(setup.paperRate || 0).toFixed(2)}</div>
+                        <div className="text-lg font-semibold">{formatCurrency(setup.paperRate || 0)}</div>
                       </div>
                       <div className="border rounded p-3">
                         <div className="text-xs text-gray-500">Shop Rate</div>
-                        <div className="text-lg font-semibold">₹{Number(setup.shopRate || 0).toFixed(2)}</div>
+                        <div className="text-lg font-semibold">{formatCurrency(setup.shopRate || 0)}</div>
                       </div>
                     </div>
                   </div>
@@ -609,7 +489,7 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
                         Object.entries(setup.productPrices).map(([key, value]) => (
                           <div key={key} className="border rounded p-3">
                             <div className="text-xs text-gray-500">{key.replace(/([A-Z])/g, " $1").replace(/^./, (str) => str.toUpperCase())}</div>
-                            <div className="text-lg font-semibold">₹{Number(value || 0).toFixed(2)}</div>
+                            <div className="text-lg font-semibold">{formatCurrency(value || 0)}</div>
                           </div>
                         ))}
                     </div>
@@ -680,15 +560,14 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
                               <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{Number(closingData.expectedCountryStock || 0).toFixed(2)}</td>
                               <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{Number(closingData.actualCountryStock || 0).toFixed(2)}</td>
                               <td className="px-4 py-2 whitespace-nowrap text-sm text-red-500">
-                                {Number(closingData.countryWeightLoss || 0).toFixed(2)}({Number(closingData.countryWeightLossPercentage || 0).toFixed(1)}%)
+                                {Number(closingData.countryWeightLoss || 0).toFixed(2)} ({Number(closingData.countryWeightLossPercentage || 0).toFixed(1)}%)
                               </td>
                             </tr>
                             <tr>
                               <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">Birds (count)</td>
-                              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{closingData.expectedCountryBirds || 0}</td>
                               <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{closingData.actualCountryBirds || 0}</td>
                               <td className="px-4 py-2 whitespace-nowrap text-sm text-red-500">
-                                {closingData.countryBirdLoss || 0}({Number(closingData.countryBirdLossPercentage || 0).toFixed(1)}%)
+                                {closingData.countryBirdLoss || 0} ({Number(closingData.countryBirdLossPercentage || 0).toFixed(1)}%)
                               </td>
                             </tr>
                           </tbody>
@@ -739,19 +618,19 @@ const HistoricalDayDetails = ({ dayData, onBack }) => {
                     <div className="grid grid-cols-2 gap-4 mt-2">
                       <div className="border rounded p-3">
                         <div className="text-xs text-gray-500">Estimated Earnings</div>
-                        <div className="text-lg font-semibold">₹{Number(closingData.estimatedEarnings).toFixed(2)}</div>
+                        <div className="text-lg font-semibold">{formatCurrency(closingData.estimatedEarnings)}</div>
                       </div>
                       <div className="border rounded p-3">
                         <div className="text-xs text-gray-500">Actual Earnings</div>
-                        <div className="text-lg font-semibold">₹{Number(closingData.actualEarnings).toFixed(2)}</div>
+                        <div className="text-lg font-semibold">{formatCurrency(closingData.actualEarnings)}</div>
                       </div>
                       <div className="border rounded p-3">
                         <div className="text-xs text-gray-500">Expenses</div>
-                        <div className="text-lg font-semibold">₹{Number(closingData.expenses || 0).toFixed(2)}</div>
+                        <div className="text-lg font-semibold">{formatCurrency(closingData.expenses || 0)}</div>
                       </div>
                       <div className="border rounded p-3 bg-green-50">
                         <div className="text-xs text-green-700">Net Earnings</div>
-                        <div className="text-lg font-semibold text-green-800">₹{Number(closingData.netEarnings).toFixed(2)}</div>
+                        <div className="text-lg font-semibold text-green-800">{formatCurrency(closingData.netEarnings)}</div>
                       </div>
                     </div>
                   </div>
