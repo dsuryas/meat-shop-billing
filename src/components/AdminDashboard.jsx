@@ -33,6 +33,7 @@ const HistoricalDataTable = React.lazy(() => import("./HistoricalDataTable"));
 const HistoricalDayDetails = React.lazy(() => import("./HistoricalDayDetails"));
 const CloseDayModal = React.lazy(() => import("./CloseDayModal"));
 const DayStatusBanner = React.lazy(() => import("./DayStatusBanner"));
+const ConversionRatesManagement = React.lazy(() => import("./ConversionRates/ConversionRatesManagement"));
 
 const AdminDashboard = ({ logout }) => {
   const [activeTab, setActiveTab] = useState("home");
@@ -58,6 +59,7 @@ const AdminDashboard = ({ logout }) => {
     { id: "customers", label: "Customers" },
     { id: "stats", label: "Stats" },
     { id: "weight-loss", label: "Weight Loss" },
+    { id: "conversion-rates", label: "Conversion Rates" },
   ];
 
   useEffect(() => {
@@ -400,6 +402,12 @@ const AdminDashboard = ({ logout }) => {
         {activeTab === "customers" && (
           <Suspense fallback={<div>Loading...</div>}>
             <RegularCustomerForm />
+          </Suspense>
+        )}
+
+        {activeTab === "conversion-rates" && (
+          <Suspense fallback={<div>Loading...</div>}>
+            <ConversionRatesManagement />
           </Suspense>
         )}
       </div>

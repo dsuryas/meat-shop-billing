@@ -2,6 +2,9 @@ import React from "react";
 import { Card, CardContent } from "./ui/card";
 import { MEAT_CONVERSION_FACTOR } from "../utils/storage";
 
+import ConversionFactorDisplay from "./ConversionRates/ConversionFactorDisplay";
+import { getBroilerMeatConversionFactor, getCountryChickenMeatConversionFactor } from "../utils/storage";
+
 const DashboardSummary = ({
   dailySetup,
   bills,
@@ -131,7 +134,9 @@ const DashboardSummary = ({
                 <div className="text-sm font-medium text-purple-800">Remaining:</div>
                 <div className="text-lg font-bold text-purple-800">{getRemainingStockMeatWeight()} kg</div>
               </div>
-              <div className="text-xs text-gray-500 mt-2 text-center italic">Conversion: {MEAT_CONVERSION_FACTOR}</div>
+              <div className="mt-2 text-center">
+                <ConversionFactorDisplay compact className="italic" />
+              </div>
             </div>
           </CardContent>
         </Card>

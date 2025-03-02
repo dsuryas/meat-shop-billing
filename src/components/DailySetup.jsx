@@ -4,8 +4,9 @@ import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Alert, AlertDescription } from "./ui/alert";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import { getBroilerMeatConversionFactor, getCountryChickenMeatConversionFactor } from "../utils/storage";
 
-const DailySetup = ({ onSetupComplete, onCancel }) => {
+const DailySetup = ({ onSetupComplete, onCancel, initialDate }) => {
   const [setupData, setSetupData] = useState({
     // Date field
     date: new Date().toISOString().split("T")[0],
@@ -43,6 +44,10 @@ const DailySetup = ({ onSetupComplete, onCancel }) => {
 
   const [isComplete, setIsComplete] = useState(false);
   const [message, setMessage] = useState("");
+  const [conversionFactors, setConversionFactors] = useState({
+    broiler: getBroilerMeatConversionFactor(),
+    countryChicken: getCountryChickenMeatConversionFactor(),
+  });
 
   const handleInputChange = (field, value, isProduct = false) => {
     setSetupData((prev) => ({

@@ -4,9 +4,10 @@ import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Select } from "./ui/select";
-import { MEAT_CONVERSION_FACTOR } from "../utils/storage";
+import { getBroilerMeatConversionFactor, getCountryChickenMeatConversionFactor } from "../utils/storage";
+import ConversionFactorDisplay from "./ConversionFactorDisplay";
 
-const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData, weightType, currentStock }) => {
+const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData, weightType, currentStock, currentCountryStock }) => {
   const [billData, setBillData] = useState({
     customerName: "",
     customerPhone: "",
@@ -24,12 +25,21 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
     customerSellingPrice: "0",
     withSkinRate: "0",
     withoutSkinRate: "0",
+    // Add chicken type field to distinguish between broiler and country chicken
+    chickenType: billingOption.id === "countryChicken" ? "country" : "broiler",
   });
 
   const [message, setMessage] = useState("");
   const [regularCustomers, setRegularCustomers] = useState([]);
   const [filteredCustomers, setFilteredCustomers] = useState([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [conversionFactors, setConversionFactors] = useState({
+    broiler: getBroilerMeatConversionFactor(),
+    countryChicken: getCountryChickenMeatConversionFactor(),
+  });
+
+  // Dynamically select the conversion factor based on chicken type
+  const CONVERSION_FACTOR = billData.chickenType === "country" ? conversionFactors.countryChicken : conversionFactors.broiler;
 
   useEffect(() => {
     // If editing, populate form with existing data
@@ -44,6 +54,12 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
       setRegularCustomers(parsedCustomers);
       setFilteredCustomers(parsedCustomers);
     }
+
+    // Make sure we have the latest conversion factors
+    setConversionFactors({
+      broiler: getBroilerMeatConversionFactor(),
+      countryChicken: getCountryChickenMeatConversionFactor(),
+    });
   }, [editData]);
 
   // Filter customers as user types
@@ -112,8 +128,8 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
 
     // Only convert to meat weight if product type is meat for retail broilers
     if (billingOption.id === "retail" && productType === "meat") {
-      // rounding to 2 decimals
-      calculatedWeight = Math.round((calculatedWeight / MEAT_CONVERSION_FACTOR) * 100) / 100;
+      // Use the appropriate conversion factor based on chicken type
+      calculatedWeight = Math.round((calculatedWeight / CONVERSION_FACTOR) * 100) / 100;
     }
 
     return (calculatedWeight * finalRatePerKg).toFixed(2);
@@ -136,8 +152,13 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
     setBillData((prev) => {
       const newData = { ...prev, [field]: value };
 
+      // If chicken type is changed, update the conversion factor used in calculations
+      if (field === "chickenType") {
+        // No further action needed as CONVERSION_FACTOR is computed dynamically
+      }
+
       // Auto-calculate price when weight, discount, product type, or customer selling price changes
-      if (field === "weight" || field === "discountPerKg" || field === "productType" || field === "customerSellingPrice") {
+      if (field === "weight" || field === "discountPerKg" || field === "productType" || field === "customerSellingPrice" || field === "chickenType") {
         const calculatedPrice = calculatePrice(newData.weight, newData.discountPerKg, field === "productType" ? value : newData.productType);
 
         newData.price = calculatedPrice;
@@ -271,11 +292,14 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
     let weightForStockValidation = Number(billData.weight);
     if (weightType === "meat") {
       // Always convert live weight to meat weight for stock comparison
-      weightForStockValidation = weightForStockValidation / MEAT_CONVERSION_FACTOR;
+      weightForStockValidation = weightForStockValidation / CONVERSION_FACTOR;
     }
 
-    if (weightForStockValidation > Number(currentStock)) {
-      setMessage(`Weight cannot exceed current stock (${currentStock}kg ${weightType} weight)`);
+    // Use the appropriate current stock based on chicken type
+    const stockToCheck = billData.chickenType === "country" ? currentCountryStock : currentStock;
+
+    if (weightForStockValidation > Number(stockToCheck)) {
+      setMessage(`Weight cannot exceed current stock (${stockToCheck}kg ${weightType} weight)`);
       return;
     }
 
@@ -302,8 +326,8 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
       weightType,
       // Store the raw weight (live weight) and also the weight appropriate for inventory deduction
       rawWeight: Number(billData.weight),
-      inventoryWeight: weightType === "meat" ? Number(billData.weight) / MEAT_CONVERSION_FACTOR : Number(billData.weight),
-      meatWeight: Number(billData.weight) / MEAT_CONVERSION_FACTOR,
+      inventoryWeight: weightType === "meat" ? Number(billData.weight) / CONVERSION_FACTOR : Number(billData.weight),
+      meatWeight: Number(billData.weight) / CONVERSION_FACTOR,
       // Include conversion details if available
       withSkinWeight: calculateWithSkinWeight(billData.weight),
       withoutSkinWeight: calculateWithoutSkinWeight(billData.weight),
@@ -311,6 +335,8 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
       withoutSkinPrice: calculateWithoutSkinPrice(billData.weight),
       withSkinPricePerKg: calculateWithSkinPricePerKg(),
       withoutSkinPricePerKg: calculateWithoutSkinPricePerKg(),
+      // Store the conversion factor used for this bill for reference
+      usedConversionFactor: CONVERSION_FACTOR,
     };
 
     onBillGenerate(billWithMetadata);
@@ -319,6 +345,11 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
   // Determine if we should show the conversion details
   const shouldShowConversions = () => {
     return billingOption.id === "wholesale" && billData.selectedCustomer && Number(billData.withSkinRate) > 0 && Number(billData.withoutSkinRate) > 0;
+  };
+
+  // Add chicken type selector if this is needed
+  const shouldShowChickenTypeSelector = () => {
+    return billingOption.id !== "countryChicken"; // Only show selector if not already on country chicken
   };
 
   return (
@@ -365,6 +396,25 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
             </div>
           </div>
 
+          {/* Chicken Type Selector - Only if not already on country chicken */}
+          {shouldShowChickenTypeSelector() && (
+            <div>
+              <label className="text-sm font-medium">Chicken Type *</label>
+              <select
+                value={billData.chickenType}
+                onChange={(e) => handleInputChange("chickenType", e.target.value)}
+                className="w-full mt-1 px-3 py-2 border rounded-md"
+              >
+                <option value="broiler">Broiler Chicken</option>
+                <option value="country">Country Chicken</option>
+              </select>
+              <div className="mt-1 flex items-center">
+                <div className="text-xs text-gray-500 mr-2">Conversion Factor:</div>
+                <div className="text-xs font-medium">{billData.chickenType === "country" ? conversionFactors.countryChicken : conversionFactors.broiler}</div>
+              </div>
+            </div>
+          )}
+
           {/* Customer selling price for wholesale */}
           {billingOption.id === "wholesale" && (
             <div className="space-y-2">
@@ -381,7 +431,7 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
             </div>
           )}
 
-          {/* Product Type Selection */}
+          {/* Product Type Selection for Retail */}
           {billingOption.id === "retail" && (
             <div>
               <label className="text-sm font-medium">Product Type *</label>
@@ -417,7 +467,7 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
             <div>
               <label className="text-sm font-medium">
                 Live weight (kg) *
-                <span className="text-xs text-gray-500 ml-2">(Meat weight: {(Number(billData.weight || 0) / MEAT_CONVERSION_FACTOR).toFixed(2)} kg)</span>
+                <span className="text-xs text-gray-500 ml-2">(Meat weight: {(Number(billData.weight || 0) / CONVERSION_FACTOR).toFixed(2)} kg)</span>
               </label>
               <Input
                 type="number"
@@ -477,6 +527,14 @@ const BillingForm = ({ rates, billingOption, onBillGenerate, onCancel, editData,
                 /kg
               </div>
             )}
+          </div>
+
+          {/* Display current conversion factor */}
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <div className="text-sm flex justify-between items-center">
+              <span className="font-medium">Current Conversion Factor: {CONVERSION_FACTOR}</span>
+              <span className="text-xs text-gray-500">({billData.chickenType === "country" ? "Country Chicken" : "Broiler"} - Live to Meat Weight)</span>
+            </div>
           </div>
 
           {/* Conversion Details for Wholesale */}

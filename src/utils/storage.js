@@ -5,10 +5,203 @@ const STORAGE_KEYS = {
   USERS: "meatShop_users",
   DAILY_CLOSINGS: "meatShop_dailyClosings",
   CLOSED_DAY: "meatShop_closedDay",
+  CONVERSION_RATES: "meatShop_conversionRates",
+  CONVERSION_FACTORS: "meatShop_conversionFactors",
 };
 
-export const MEAT_CONVERSION_FACTOR = 1.45;
-export const COUNTRY_MEAT_CONVERSION_FACTOR = 1.35;
+// Default conversion rates - these are used if no custom values have been set
+const DEFAULT_CONVERSION_FACTORS = [
+  {
+    id: "broilerMeatConversion",
+    name: "Broiler Meat Conversion",
+    value: 1.45,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    history: [],
+    description: "Live weight to meat weight ratio for broiler chicken",
+  },
+  {
+    id: "countryChickenMeatConversion",
+    name: "Country Chicken Meat Conversion",
+    value: 1.65,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    history: [],
+    description: "Live weight to meat weight ratio for country chicken",
+  },
+];
+
+// Function to get all conversion factors
+export const getConversionFactors = () => {
+  try {
+    const factors = localStorage.getItem(STORAGE_KEYS.CONVERSION_FACTORS);
+    if (!factors) {
+      // Initialize with defaults if none exist
+      localStorage.setItem(STORAGE_KEYS.CONVERSION_FACTORS, JSON.stringify(DEFAULT_CONVERSION_FACTORS));
+      return DEFAULT_CONVERSION_FACTORS;
+    }
+    return JSON.parse(factors);
+  } catch (error) {
+    console.error("Error getting conversion factors:", error);
+    return DEFAULT_CONVERSION_FACTORS;
+  }
+};
+
+// Function to get a specific conversion factor by ID
+export const getConversionFactorById = (id) => {
+  const factors = getConversionFactors();
+  const factor = factors.find((f) => f.id === id);
+  return factor || null;
+};
+
+// Function to get conversion factor value by ID
+export const getConversionFactorValue = (id) => {
+  const factor = getConversionFactorById(id);
+  return factor ? factor.value : id === "broilerMeatConversion" ? 1.45 : 1.65;
+};
+
+// Update a specific conversion factor
+export const updateConversionFactor = (id, newValue, modifiedBy = null, notes = null) => {
+  try {
+    const factors = getConversionFactors();
+    const factorIndex = factors.findIndex((f) => f.id === id);
+
+    if (factorIndex === -1) {
+      console.error(`Conversion factor with id ${id} not found`);
+      return false;
+    }
+
+    const factor = factors[factorIndex];
+
+    // Only update if the value has changed
+    if (factor.value === newValue) {
+      return true; // No change needed
+    }
+
+    // Add current value to history before updating
+    const historicalEntry = {
+      value: factor.value,
+      timestamp: factor.updatedAt,
+      modifiedBy: factor.lastModifiedBy || "System",
+      notes: factor.lastModifiedNotes || "Initial value",
+    };
+
+    // Create updated factor
+    const updatedFactor = {
+      ...factor,
+      value: newValue,
+      updatedAt: new Date().toISOString(),
+      lastModifiedBy: modifiedBy,
+      lastModifiedNotes: notes,
+      history: [historicalEntry, ...factor.history],
+    };
+
+    // Update the factors array
+    factors[factorIndex] = updatedFactor;
+
+    // Save to localStorage
+    localStorage.setItem(STORAGE_KEYS.CONVERSION_FACTORS, JSON.stringify(factors));
+
+    return true;
+  } catch (error) {
+    console.error(`Error updating conversion factor ${id}:`, error);
+    return false;
+  }
+};
+
+// Update multiple conversion factors at once
+export const updateConversionFactors = (updates, modifiedBy = null, notes = null) => {
+  try {
+    let anyUpdated = false;
+
+    // Process each update
+    for (const [id, newValue] of Object.entries(updates)) {
+      const updated = updateConversionFactor(id, newValue, modifiedBy, notes);
+      if (updated) {
+        anyUpdated = true;
+      }
+    }
+
+    return anyUpdated;
+  } catch (error) {
+    console.error("Error updating conversion factors:", error);
+    return false;
+  }
+};
+
+// Get all conversion factor history (for reporting)
+export const getAllConversionFactorHistory = () => {
+  const factors = getConversionFactors();
+
+  // Create a flat history array with factor identification
+  const history = factors.flatMap((factor) => {
+    // Create an entry for the current value
+    const currentEntry = {
+      id: factor.id,
+      name: factor.name,
+      value: factor.value,
+      timestamp: factor.updatedAt,
+      modifiedBy: factor.lastModifiedBy || "System",
+      notes: factor.lastModifiedNotes || "Initial value",
+      isCurrent: true,
+    };
+
+    // Map history entries
+    const historyEntries = factor.history.map((entry) => ({
+      id: factor.id,
+      name: factor.name,
+      value: entry.value,
+      timestamp: entry.timestamp,
+      modifiedBy: entry.modifiedBy || "System",
+      notes: entry.notes || "",
+      isCurrent: false,
+    }));
+
+    return [currentEntry, ...historyEntries];
+  });
+
+  // Sort by timestamp, most recent first
+  return history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+};
+
+// Helper functions that provide the actual conversion factors
+// These should be used throughout the application instead of hard-coded values
+export const getBroilerMeatConversionFactor = () => {
+  return getConversionFactorValue("broilerMeatConversion");
+};
+
+export const getCountryChickenMeatConversionFactor = () => {
+  return getConversionFactorValue("countryChickenMeatConversion");
+};
+
+// For backwards compatibility
+export const getConversionRates = () => {
+  return {
+    broilerMeatConversion: getBroilerMeatConversionFactor(),
+    countryChickenMeatConversion: getCountryChickenMeatConversionFactor(),
+  };
+};
+
+// For backwards compatibility
+export const saveConversionRates = (rates, modifiedBy = null, notes = null) => {
+  return updateConversionFactors(rates, modifiedBy, notes);
+};
+
+export const getConversionRatesHistory = () => {
+  return getAllConversionFactorHistory();
+};
+
+// Initialize the conversion factors if they don't exist
+export const initializeConversionFactors = () => {
+  const factors = localStorage.getItem(STORAGE_KEYS.CONVERSION_FACTORS);
+  if (!factors) {
+    localStorage.setItem(STORAGE_KEYS.CONVERSION_FACTORS, JSON.stringify(DEFAULT_CONVERSION_FACTORS));
+  }
+};
+
+// For backwards compatibility
+export const MEAT_CONVERSION_FACTOR = getBroilerMeatConversionFactor();
+export const COUNTRY_MEAT_CONVERSION_FACTOR = getCountryChickenMeatConversionFactor();
 
 // Daily Setup Functions
 export const saveDailySetup = (setupData) => {
