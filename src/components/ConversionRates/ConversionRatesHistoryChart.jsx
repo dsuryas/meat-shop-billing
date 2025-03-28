@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 import { getAllConversionFactorHistory } from "../../utils/storage";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../ui/card";
 
-const ConversionRatesChart = () => {
+const ConversionRatesHistoryChart = () => {
   const [chartData, setChartData] = useState([]);
   const [categoryFilter, setCategoryFilter] = useState("all"); // all, broiler, country
   const [typeFilter, setTypeFilter] = useState("all"); // all, meat, withSkin, withoutSkin
@@ -275,4 +275,4 @@ const ConversionRatesChart = () => {
   );
 };
 
-export default ConversionRatesChart;
+export default ConversionRatesHistoryChart;

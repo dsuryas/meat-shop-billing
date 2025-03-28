@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from "react";
+import { useState, useEffect, useContext } from "react";
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "../ui/card";
 import { Button } from "../ui/button";
@@ -7,8 +7,8 @@ import { Alert, AlertDescription } from "../ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { getConversionFactors, getConversionFactorsByCategory, updateConversionFactor, initializeConversionFactors } from "../../utils/storage";
 import MigrationHelper from "./MigrationHelper";
-import ConversionRatesHistory from "./ConversionRatesHistory";
-import ConversionRatesChart from "./ConversionRatesChart";
+import ConversionRatesHistoryChart from "./ConversionRatesHistoryChart";
+import ConversionRatesHistoryTable from "./ConversionRatesHistoryTable";
 import { AuthContext } from "../../contexts/AuthContext";
 
 // Default factor definitions - used as fallback if data is missing
@@ -411,9 +411,9 @@ const ConversionRatesManagement = () => {
       </Card>
 
       {/* Chart and History */}
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-        <ConversionRatesChart />
-        <ConversionRatesHistory />
+      <div className="mt-6 grid grid-cols-1 gap-6">
+        <ConversionRatesHistoryChart />
+        <ConversionRatesHistoryTable />
       </div>
 
       {/* Migration Helper */}
