@@ -34,6 +34,7 @@ const HistoricalDayDetails = React.lazy(() => import("./HistoricalDayDetails"));
 const CloseDayModal = React.lazy(() => import("./CloseDayModal"));
 const DayStatusBanner = React.lazy(() => import("./DayStatusBanner"));
 const ConversionRatesManagement = React.lazy(() => import("./ConversionRates/ConversionRatesManagement"));
+const ExpenseCategoryManagement = React.lazy(() => import("./ExpenseCategoryManagement"));
 
 const AdminDashboard = ({ logout }) => {
   const [activeTab, setActiveTab] = useState("home");
@@ -57,6 +58,7 @@ const AdminDashboard = ({ logout }) => {
     { id: "products", label: "Products" },
     { id: "users", label: "Staff" },
     { id: "customers", label: "Customers" },
+    { id: "expenses", label: "Expenses" },
     { id: "stats", label: "Stats" },
     { id: "weight-loss", label: "Weight Loss" },
     { id: "conversion-rates", label: "Conversion Rates" },
@@ -408,6 +410,12 @@ const AdminDashboard = ({ logout }) => {
         {activeTab === "conversion-rates" && (
           <Suspense fallback={<div>Loading...</div>}>
             <ConversionRatesManagement />
+          </Suspense>
+        )}
+
+        {activeTab === "expenses" && (
+          <Suspense fallback={<div>Loading...</div>}>
+            <ExpenseCategoryManagement />
           </Suspense>
         )}
       </div>
