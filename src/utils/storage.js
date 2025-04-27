@@ -7,6 +7,8 @@ const STORAGE_KEYS = {
   CLOSED_DAY: "meatShop_closedDay",
   CONVERSION_RATES: "meatShop_conversionRates",
   CONVERSION_FACTORS: "meatShop_conversionFactors",
+  EXPENSE_CATEGORIES: "meatShop_expenseCategories",
+  EXPENSES: "meatShop_expenses",
 };
 
 // Default conversion rates - these are used if no custom values have been set
@@ -560,4 +562,95 @@ export const getBroilerBills = () => {
 
 export const getCountryChickenBills = () => {
   return getBills().filter((bill) => bill.chickenType === "country");
+};
+
+// Expense Categories Functions
+export const getExpenseCategories = () => {
+  try {
+    const categories = localStorage.getItem(STORAGE_KEYS.EXPENSE_CATEGORIES);
+    return categories ? JSON.parse(categories) : [];
+  } catch (error) {
+    console.error("Error getting expense categories:", error);
+    return [];
+  }
+};
+
+export const saveExpenseCategories = (categories) => {
+  try {
+    localStorage.setItem(STORAGE_KEYS.EXPENSE_CATEGORIES, JSON.stringify(categories));
+    return true;
+  } catch (error) {
+    console.error("Error saving expense categories:", error);
+    return false;
+  }
+};
+
+export const getExpenseCategoryById = (categoryId) => {
+  const categories = getExpenseCategories();
+  return categories.find((category) => category.id === categoryId);
+};
+
+// Expenses Functions
+export const getExpenses = () => {
+  try {
+    const expenses = localStorage.getItem(STORAGE_KEYS.EXPENSES);
+    return expenses ? JSON.parse(expenses) : [];
+  } catch (error) {
+    console.error("Error getting expenses:", error);
+    return [];
+  }
+};
+
+export const saveExpenses = (expenses) => {
+  try {
+    localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+    return true;
+  } catch (error) {
+    console.error("Error saving expenses:", error);
+    return false;
+  }
+};
+
+export const addExpense = (expenseData) => {
+  try {
+    const expenses = getExpenses();
+    const newExpense = {
+      ...expenseData,
+      id: Date.now(),
+      timestamp: new Date().toISOString(),
+    };
+    const updatedExpenses = [...expenses, newExpense];
+    saveExpenses(updatedExpenses);
+    return newExpense;
+  } catch (error) {
+    console.error("Error adding expense:", error);
+    return null;
+  }
+};
+
+export const getExpensesForDay = (date) => {
+  try {
+    const expenses = getExpenses();
+    const targetDate = new Date(date).toISOString().split("T")[0];
+
+    return expenses.filter((expense) => {
+      const expenseDate = new Date(expense.timestamp).toISOString().split("T")[0];
+      return expenseDate === targetDate;
+    });
+  } catch (error) {
+    console.error("Error filtering expenses for day:", error);
+    return [];
+  }
+};
+
+export const getExpensesForCurrentDay = () => {
+  try {
+    const setup = getDailySetup();
+    if (!setup) return [];
+
+    return getExpensesForDay(setup.date);
+  } catch (error) {
+    console.error("Error getting expenses for current day:", error);
+    return [];
+  }
 };

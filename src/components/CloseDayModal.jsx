@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "./ui/card";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Alert, AlertDescription } from "./ui/alert";
-import { MEAT_CONVERSION_FACTOR, COUNTRY_MEAT_CONVERSION_FACTOR } from "../utils/storage";
+import { MEAT_CONVERSION_FACTOR, COUNTRY_MEAT_CONVERSION_FACTOR, getExpenseCategories } from "../utils/storage";
+import PropTypes from "prop-types";
 
 const CloseDayModal = ({
   dailySetup,
@@ -21,9 +22,45 @@ const CloseDayModal = ({
   const [actualBirds, setActualBirds] = useState("");
   const [actualCountryStock, setActualCountryStock] = useState("");
   const [actualCountryBirds, setActualCountryBirds] = useState("");
-  const [expenses, setExpenses] = useState("");
+  const [expenseItems, setExpenseItems] = useState([]);
+  const [expenseCategories, setExpenseCategories] = useState([]);
+  const [totalExpenses, setTotalExpenses] = useState(0);
   const [expenseNotes, setExpenseNotes] = useState("");
   const [message, setMessage] = useState("");
+
+  // Load expense categories
+  useEffect(() => {
+    const categories = getExpenseCategories();
+    setExpenseCategories(categories);
+
+    // Initialize expense items with one empty item for each category
+    if (categories.length > 0) {
+      const initialItems = categories.map((category) => ({
+        categoryId: category.id,
+        categoryName: category.name,
+        amount: "",
+      }));
+      setExpenseItems(initialItems);
+    } else {
+      // If no categories, create a single generic expense item
+      setExpenseItems([{ categoryId: "generic", categoryName: "General Expense", amount: "" }]);
+    }
+  }, []);
+
+  // Calculate total expenses whenever expense items change
+  useEffect(() => {
+    const total = expenseItems.reduce((sum, item) => {
+      return sum + (Number(item.amount) || 0);
+    }, 0);
+    setTotalExpenses(total);
+  }, [expenseItems]);
+
+  // Handle expense amount change
+  const handleExpenseChange = (index, amount) => {
+    const updatedItems = [...expenseItems];
+    updatedItems[index] = { ...updatedItems[index], amount };
+    setExpenseItems(updatedItems);
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -45,22 +82,25 @@ const CloseDayModal = ({
       return;
     }
 
-    if (expenses && Number(expenses) < 0) {
-      setMessage("Expenses cannot be negative");
-      return;
+    // Validate expenses
+    for (const item of expenseItems) {
+      if (item.amount && Number(item.amount) < 0) {
+        setMessage(`Expense amount for ${item.categoryName} cannot be negative`);
+        return;
+      }
     }
 
     // Calculate weight loss for broilers based on estimation method
     const expectedBroilerStock = Number(currentStock);
     const remainingBroilerStock = Number(actualStock);
     let broilerWeightLoss = expectedBroilerStock - remainingBroilerStock;
-    let broilerWeightLossPercentage = (broilerWeightLoss / expectedBroilerStock) * 100;
+    let broilerWeightLossPercentage = expectedBroilerStock > 0 ? (broilerWeightLoss / expectedBroilerStock) * 100 : 0;
 
     // Calculate weight loss for country chicken
     const expectedCountryStock = Number(currentCountryStock);
     const remainingCountryStock = Number(actualCountryStock);
     let countryWeightLoss = expectedCountryStock - remainingCountryStock;
-    let countryWeightLossPercentage = (countryWeightLoss / expectedCountryStock) * 100;
+    let countryWeightLossPercentage = expectedCountryStock > 0 ? (countryWeightLoss / expectedCountryStock) * 100 : 0;
 
     // Only convert between meat and live weight for broilers if needed
     let convertedBroilerWeightLoss = broilerWeightLoss;
@@ -74,6 +114,9 @@ const CloseDayModal = ({
 
     // Convert country chicken weight loss
     let convertedCountryWeightLoss = countryWeightLoss / COUNTRY_MEAT_CONVERSION_FACTOR;
+
+    // Filter out expense items with no amount
+    const validExpenseItems = expenseItems.filter((item) => Number(item.amount) > 0);
 
     const closingData = {
       date: new Date().toISOString(),
@@ -100,13 +143,14 @@ const CloseDayModal = ({
       expectedBirds: expectedBirds,
       actualBirds: Number(actualBirds),
       birdLoss: expectedBirds - Number(actualBirds),
-      birdLossPercentage: (((expectedBirds - Number(actualBirds)) / expectedBirds) * 100).toFixed(2),
+      birdLossPercentage: expectedBirds > 0 ? (((expectedBirds - Number(actualBirds)) / expectedBirds) * 100).toFixed(2) : "0.00",
 
       // Country chicken bird metrics
       expectedCountryBirds: expectedCountryBirds,
       actualCountryBirds: Number(actualCountryBirds),
       countryBirdLoss: expectedCountryBirds - Number(actualCountryBirds),
-      countryBirdLossPercentage: (((expectedCountryBirds - Number(actualCountryBirds)) / expectedCountryBirds) * 100).toFixed(2),
+      countryBirdLossPercentage:
+        expectedCountryBirds > 0 ? (((expectedCountryBirds - Number(actualCountryBirds)) / expectedCountryBirds) * 100).toFixed(2) : "0.00",
 
       // System info
       dailySetupId: dailySetup.id || Date.now(),
@@ -115,9 +159,10 @@ const CloseDayModal = ({
       estimatedEarnings,
       actualEarnings: currentEarnings,
       totalDiscounts,
-      expenses: Number(expenses) || 0,
+      expenses: totalExpenses,
+      expenseItems: validExpenseItems,
       expenseNotes: expenseNotes.trim(),
-      netEarnings: currentEarnings - (Number(expenses) || 0),
+      netEarnings: currentEarnings - totalExpenses,
     };
 
     onConfirm(closingData);
@@ -215,17 +260,48 @@ const CloseDayModal = ({
 
           {/* Expenses Input */}
           <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">Daily Expenses (₹)</label>
-              <Input
-                type="number"
-                step="0.01"
-                value={expenses}
-                onChange={(e) => setExpenses(e.target.value)}
-                className="mt-1"
-                placeholder="Enter total expenses for the day"
-              />
+            <h3 className="font-semibold text-gray-800">Daily Expenses</h3>
+
+            {expenseCategories.length === 0 ? (
+              <div className="bg-yellow-50 p-4 rounded-lg">
+                <p className="text-sm text-yellow-700">No expense categories configured. Please add categories in the Expenses tab of the Admin Dashboard.</p>
+                <div className="mt-4">
+                  <label className="text-sm font-medium">General Expenses (₹)</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={expenseItems[0]?.amount || ""}
+                    onChange={(e) => handleExpenseChange(0, e.target.value)}
+                    className="mt-1"
+                    placeholder="Enter total expenses for the day"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {expenseItems.map((item, index) => (
+                  <div key={item.categoryId} className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <label className="text-sm font-medium">{item.categoryName} (₹)</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={item.amount}
+                        onChange={(e) => handleExpenseChange(index, e.target.value)}
+                        className="mt-1"
+                        placeholder={`Enter ${item.categoryName.toLowerCase()} expenses`}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="bg-gray-50 p-3 rounded-lg flex justify-between items-center">
+              <span className="font-medium">Total Expenses:</span>
+              <span className="font-bold">₹{totalExpenses.toFixed(2)}</span>
             </div>
+
             <div>
               <label className="text-sm font-medium">Expense Notes</label>
               <textarea
@@ -237,10 +313,10 @@ const CloseDayModal = ({
             </div>
           </div>
 
-          {expenses && (
+          {totalExpenses > 0 && (
             <div className="bg-rose-50 p-4 rounded-lg">
               <h3 className="font-semibold text-rose-800">Net Earnings</h3>
-              <div className="text-lg font-bold text-rose-700">₹{(currentEarnings - Number(expenses)).toFixed(2)}</div>
+              <div className="text-lg font-bold text-rose-700">₹{(currentEarnings - totalExpenses).toFixed(2)}</div>
             </div>
           )}
 
@@ -259,6 +335,19 @@ const CloseDayModal = ({
       </CardFooter>
     </Card>
   );
+};
+
+CloseDayModal.propTypes = {
+  dailySetup: PropTypes.object.isRequired,
+  currentStock: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  expectedBirds: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  currentCountryStock: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  expectedCountryBirds: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  currentEarnings: PropTypes.number.isRequired,
+  estimatedEarnings: PropTypes.number.isRequired,
+  totalDiscounts: PropTypes.number.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onConfirm: PropTypes.func.isRequired,
 };
 
 export default CloseDayModal;
