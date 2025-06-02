@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 import { Button } from "./ui/button";
 import { ChevronLeft, ChevronRight, Calendar, DollarSign, ShoppingBag } from "lucide-react";
-import { getDailyClosings, formatDate } from "../utils/storage";
+import { getDailyClosings } from "../utils/storage";
 
 const HistoricalDataTable = ({ onViewDay }) => {
   const [closings, setClosings] = useState([]);
@@ -14,8 +14,8 @@ const HistoricalDataTable = ({ onViewDay }) => {
     loadClosings();
   }, []);
 
-  const loadClosings = () => {
-    const allClosings = getDailyClosings();
+  const loadClosings = async () => {
+    const allClosings = await getDailyClosings();
     setClosings(allClosings || []);
     setTotalPages(Math.ceil((allClosings?.length || 0) / itemsPerPage));
   };

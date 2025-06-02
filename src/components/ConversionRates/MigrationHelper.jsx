@@ -1,20 +1,33 @@
-import React, { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "../ui/card";
 import { Button } from "../ui/button";
 import { Alert, AlertDescription } from "../ui/alert";
-import {
-  initializeConversionFactors,
-  getConversionFactorById,
-  getAllConversionFactorHistory,
-  getBroilerMeatConversionFactor,
-  getCountryChickenMeatConversionFactor,
-} from "../../utils/storage";
+import { initializeConversionFactors, getBroilerMeatConversionFactor, getCountryChickenMeatConversionFactor } from "../../utils/storage";
+import { dbService } from "../../utils/db";
 
 const MigrationHelper = () => {
   const [message, setMessage] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrationSteps, setMigrationSteps] = useState([]);
+  const [broilerFactor, setBroilerFactor] = useState(null);
+  const [countryFactor, setCountryFactor] = useState(null);
+
+  // Load current conversion factors
+  useEffect(() => {
+    const loadFactors = async () => {
+      try {
+        const broiler = await getBroilerMeatConversionFactor();
+        const country = await getCountryChickenMeatConversionFactor();
+        setBroilerFactor(broiler);
+        setCountryFactor(country);
+      } catch (error) {
+        console.error("Error loading conversion factors:", error);
+      }
+    };
+
+    loadFactors();
+  }, []);
 
   const addMigrationStep = (step, status = "pending") => {
     setMigrationSteps((prev) => [...prev, { step, status, timestamp: new Date().toISOString() }]);
@@ -39,12 +52,12 @@ const MigrationHelper = () => {
     try {
       // Step 1: Initialize conversion factors if needed
       addMigrationStep("Initializing conversion factors structure");
-      initializeConversionFactors();
+      await initializeConversionFactors();
       updateLastMigrationStep("complete");
 
       // Step 2: Verify broiler conversion factor
       addMigrationStep("Verifying broiler conversion factor");
-      const broilerFactor = getConversionFactorById("broilerMeatConversion");
+      const broilerFactor = await dbService.getConversionFactorById("broilerMeatConversion");
       if (!broilerFactor) {
         throw new Error("Broiler conversion factor not found");
       }
@@ -52,7 +65,7 @@ const MigrationHelper = () => {
 
       // Step 3: Verify country chicken conversion factor
       addMigrationStep("Verifying country chicken conversion factor");
-      const countryFactor = getConversionFactorById("countryChickenMeatConversion");
+      const countryFactor = await dbService.getConversionFactorById("countryChickenMeatConversion");
       if (!countryFactor) {
         throw new Error("Country chicken conversion factor not found");
       }
@@ -60,19 +73,26 @@ const MigrationHelper = () => {
 
       // Step 4: Verify history is properly structured
       addMigrationStep("Verifying conversion factor history");
-      const history = getAllConversionFactorHistory();
+      const history = await dbService.getAllConversionFactorHistory();
       updateLastMigrationStep("complete");
 
       // Step 5: Success report
       addMigrationStep("Generating migration report");
+      const broilerValue = await getBroilerMeatConversionFactor();
+      const countryValue = await getCountryChickenMeatConversionFactor();
+
       const report = {
         timestamp: new Date().toISOString(),
-        broilerFactor: getBroilerMeatConversionFactor(),
-        countryFactor: getCountryChickenMeatConversionFactor(),
+        broilerFactor: broilerValue,
+        countryFactor: countryValue,
         historyEntries: history.length,
       };
       console.log("Migration report:", report);
       updateLastMigrationStep("complete");
+
+      // Update displayed conversion factors
+      setBroilerFactor(broilerValue);
+      setCountryFactor(countryValue);
 
       setMessage(`Migration completed successfully. All data is now using the document-based conversion factor system.`);
       setIsSuccess(true);
@@ -101,8 +121,8 @@ const MigrationHelper = () => {
             </p>
             <p className="text-sm text-blue-700">Current conversion factors:</p>
             <ul className="list-disc pl-5 text-sm text-blue-700">
-              <li>Broiler meat conversion: {getBroilerMeatConversionFactor()}</li>
-              <li>Country chicken meat conversion: {getCountryChickenMeatConversionFactor()}</li>
+              <li>Broiler meat conversion: {broilerFactor || "Loading..."}</li>
+              <li>Country chicken meat conversion: {countryFactor || "Loading..."}</li>
             </ul>
           </div>
 

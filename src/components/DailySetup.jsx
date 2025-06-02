@@ -65,7 +65,6 @@ const DailySetup = ({ onSetupComplete, onCancel, initialDate }) => {
 
   const calculateEstimatedEarnings = () => {
     const totalBroilerStock = Number(setupData.freshStock || 0) + Number(setupData.remainingStock || 0);
-
     const totalCountryStock = Number(setupData.countryFreshStock || 0) + Number(setupData.countryRemainingStock || 0);
 
     let broilerEarnings = 0;

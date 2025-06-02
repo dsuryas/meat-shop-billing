@@ -472,7 +472,7 @@ const StaffDashboard = ({ logout }) => {
                 currentCountryStock={stockCalculations.getRemainingCountryStockLiveWeight()}
                 expectedCountryBirds={stockCalculations.getRemainingCountryBirds()}
                 currentEarnings={salesCalculations.getCurrentEarnings()}
-                estimatedEarnings={dailySetup.estimatedEarnings}
+                estimatedEarnings={dailySetup?.estimatedEarnings || 0}
                 totalDiscounts={salesCalculations.getTotalDiscounts()}
                 onClose={() => setShowCloseDayModal(false)}
                 onConfirm={handleCloseDayConfirmed}

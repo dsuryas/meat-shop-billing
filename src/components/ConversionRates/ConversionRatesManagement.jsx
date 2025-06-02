@@ -1,14 +1,21 @@
 import { useState, useEffect, useContext } from "react";
 
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "../ui/card";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
-import { getConversionFactors, getConversionFactorsByCategory, updateConversionFactor, initializeConversionFactors } from "../../utils/storage";
+import {
+  getConversionFactors,
+  getConversionFactorsByCategory,
+  updateConversionFactor,
+  initializeConversionFactors,
+  // getBroilerMeatConversionFactor,
+  // getCountryChickenMeatConversionFactor,
+} from "../../utils/storage";
 import MigrationHelper from "./MigrationHelper";
-import ConversionRatesHistoryChart from "./ConversionRatesHistoryChart";
 import ConversionRatesHistoryTable from "./ConversionRatesHistoryTable";
+import ConversionRatesHistoryChart from "./ConversionRatesHistoryChart";
 import { AuthContext } from "../../contexts/AuthContext";
 
 // Default factor definitions - used as fallback if data is missing
@@ -74,45 +81,52 @@ const ConversionRatesManagement = () => {
 
   useEffect(() => {
     // Initialize factors if needed
-    try {
-      initializeConversionFactors();
+    const initFactors = async () => {
+      try {
+        await initializeConversionFactors();
+        // Load factors from IndexedDB
+        await loadFactors();
+      } catch (error) {
+        console.error("Error initializing conversion factors:", error);
+        setHasError(true);
+        setIsLoading(false);
 
-      // Load factors from storage
-      loadFactors();
-    } catch (error) {
-      console.error("Error initializing conversion factors:", error);
-      setHasError(true);
-      setIsLoading(false);
-
-      // Set defaults if error occurs
-      if (activeTab === "broiler") {
-        setConversionFactors(DEFAULT_BROILER_FACTORS);
-      } else {
-        setConversionFactors(DEFAULT_COUNTRY_FACTORS);
+        // Set defaults if error occurs
+        if (activeTab === "broiler") {
+          setConversionFactors(DEFAULT_BROILER_FACTORS);
+        } else {
+          setConversionFactors(DEFAULT_COUNTRY_FACTORS);
+        }
       }
-    }
+    };
+
+    initFactors();
   }, []);
 
   useEffect(() => {
     // Reload factors when active tab changes
-    try {
-      loadFactorsByCategory(activeTab);
-    } catch (error) {
-      console.error(`Error loading ${activeTab} factors:`, error);
+    const loadFactorsByTab = async () => {
+      try {
+        await loadFactorsByCategory(activeTab);
+      } catch (error) {
+        console.error(`Error loading ${activeTab} factors:`, error);
 
-      // Set defaults based on current tab
-      if (activeTab === "broiler") {
-        setConversionFactors(DEFAULT_BROILER_FACTORS);
-      } else {
-        setConversionFactors(DEFAULT_COUNTRY_FACTORS);
+        // Set defaults based on current tab
+        if (activeTab === "broiler") {
+          setConversionFactors(DEFAULT_BROILER_FACTORS);
+        } else {
+          setConversionFactors(DEFAULT_COUNTRY_FACTORS);
+        }
       }
-    }
+    };
+
+    loadFactorsByTab();
   }, [activeTab]);
 
-  const loadFactors = () => {
+  const loadFactors = async () => {
     setIsLoading(true);
     try {
-      const factors = getConversionFactors();
+      const factors = await getConversionFactors();
       if (!factors || factors.length === 0) {
         // If no factors found, use defaults
         setConversionFactors(DEFAULT_BROILER_FACTORS);
@@ -138,10 +152,10 @@ const ConversionRatesManagement = () => {
     }
   };
 
-  const loadFactorsByCategory = (category) => {
+  const loadFactorsByCategory = async (category) => {
     setIsLoading(true);
     try {
-      const factors = getConversionFactorsByCategory(category);
+      const factors = await getConversionFactorsByCategory(category);
       if (!factors || factors.length === 0) {
         // If no factors found, use defaults
         setConversionFactors(category === "broiler" ? DEFAULT_BROILER_FACTORS : DEFAULT_COUNTRY_FACTORS);
@@ -171,7 +185,7 @@ const ConversionRatesManagement = () => {
     setConversionFactors((prev) => prev.map((factor) => (factor.id === id ? { ...factor, value: numValue } : factor)));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (isLoading) {
@@ -198,7 +212,7 @@ const ConversionRatesManagement = () => {
     try {
       // Save each factor
       for (const factor of conversionFactors) {
-        const updated = updateConversionFactor(factor.id, factor.value, username, notes.trim() || `Updated ${factor.name} conversion factor`);
+        const updated = await updateConversionFactor(factor.id, factor.value, username, notes.trim() || `Updated ${factor.name} conversion factor`);
 
         if (updated) {
           updatesApplied = true;
@@ -211,7 +225,7 @@ const ConversionRatesManagement = () => {
         setNotes(""); // Clear notes after successful update
 
         // Reload factors to get updated timestamps
-        loadFactorsByCategory(activeTab);
+        await loadFactorsByCategory(activeTab);
       } else {
         setMessage("No changes were detected in the conversion factors.");
         setIsSuccess(true);
@@ -410,8 +424,8 @@ const ConversionRatesManagement = () => {
         </CardContent>
       </Card>
 
-      {/* Chart and History */}
-      <div className="mt-6 grid grid-cols-1 gap-6">
+      {/* Chart and History Components would also need to be updated for IndexedDB */}
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
         <ConversionRatesHistoryChart />
         <ConversionRatesHistoryTable />
       </div>

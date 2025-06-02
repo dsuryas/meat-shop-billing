@@ -1,7 +1,6 @@
 import React, { useState, useEffect, Suspense } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
 import { Button } from "./ui/button";
-import { LogOut, History } from "lucide-react";
+import { LogOut } from "lucide-react";
 import {
   getDailySetup,
   getBills,
@@ -14,7 +13,6 @@ import {
   startNewDaySetup,
   saveDailySetup,
 } from "../utils/storage";
-import { Input } from "./ui/input";
 import { calculateStock, calculateSales, isDayClosed } from "../utils/DashboardUtils";
 
 // Lazy load components
@@ -431,7 +429,7 @@ const AdminDashboard = ({ logout }) => {
                 currentCountryStock={stockCalculations.getRemainingCountryStockLiveWeight()}
                 expectedCountryBirds={stockCalculations.getRemainingCountryBirds()}
                 currentEarnings={salesCalculations.getCurrentEarnings()}
-                estimatedEarnings={dailySetup.estimatedEarnings}
+                estimatedEarnings={dailySetup?.estimatedEarnings || 0}
                 totalDiscounts={salesCalculations.getTotalDiscounts()}
                 onClose={() => setShowCloseDayModal(false)}
                 onConfirm={handleCloseDayConfirmed}

@@ -1,3 +1,11 @@
+// storage-updated.js - Modified to use IndexedDB instead of localStorage
+import { dbService } from "./db/index";
+
+// Database initialization status
+let isDbInitialized = false;
+let dbInitializationPromise = null;
+
+// Storage keys mapping (for reference to original localStorage keys)
 const STORAGE_KEYS = {
   DAILY_SETUP: "meatShop_dailySetup",
   BILLS: "meatShop_bills",
@@ -9,178 +17,229 @@ const STORAGE_KEYS = {
   CONVERSION_FACTORS: "meatShop_conversionFactors",
   EXPENSE_CATEGORIES: "meatShop_expenseCategories",
   EXPENSES: "meatShop_expenses",
+  REGULAR_CUSTOMERS: "meatShop_regularCustomers",
+  PRICE_HISTORY: "meatShop_priceHistory",
 };
 
-// Default conversion rates - these are used if no custom values have been set
-const DEFAULT_CONVERSION_FACTORS = [
-  // Broiler Chicken Factors
-  {
-    id: "broilerMeatConversion",
-    name: "Broiler Meat Conversion",
-    value: 1.45,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    history: [],
-    description: "Live weight to meat weight ratio for broiler chicken",
-    category: "broiler",
-  },
-  {
-    id: "broilerWithSkinConversion",
-    name: "Broiler With Skin Conversion",
-    value: 1.25,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    history: [],
-    description: "Live weight to with-skin weight ratio for broiler chicken",
-    category: "broiler",
-  },
-  {
-    id: "broilerWithoutSkinConversion",
-    name: "Broiler Without Skin Conversion",
-    value: 1.35,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    history: [],
-    description: "Live weight to without-skin weight ratio for broiler chicken",
-    category: "broiler",
-  },
+// Cached values for conversion factors (to avoid repeated async calls)
+let cachedConversionFactors = {
+  broilerMeat: null,
+  countryChickenMeat: null,
+  broilerWithSkin: null,
+  broilerWithoutSkin: null,
+  countryWithSkin: null,
+  countryWithoutSkin: null,
+  lastUpdated: null,
+};
 
-  // Country Chicken Factors
-  {
-    id: "countryMeatConversion",
-    name: "Country Chicken Meat Conversion",
-    value: 1.65,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    history: [],
-    description: "Live weight to meat weight ratio for country chicken",
-    category: "country",
-  },
-  {
-    id: "countryWithSkinConversion",
-    name: "Country Chicken With Skin Conversion",
-    value: 1.45,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    history: [],
-    description: "Live weight to with-skin weight ratio for country chicken",
-    category: "country",
-  },
-  {
-    id: "countryWithoutSkinConversion",
-    name: "Country Chicken Without Skin Conversion",
-    value: 1.55,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    history: [],
-    description: "Live weight to without-skin weight ratio for country chicken",
-    category: "country",
-  },
-];
+// Initialize the database and ensure proper setup
+export const initializeDatabase = async () => {
+  // If already initialized or initialization is in progress, return the promise
+  if (isDbInitialized) {
+    return true;
+  }
+
+  if (dbInitializationPromise) {
+    return dbInitializationPromise;
+  }
+
+  dbInitializationPromise = (async () => {
+    try {
+      console.log("Initializing database...");
+
+      // Initialize the database
+      const result = await dbService.initDatabase();
+
+      if (!result) {
+        throw new Error("Database initialization failed");
+      }
+
+      // Mark as initialized
+      isDbInitialized = true;
+      console.log("Database initialized successfully");
+
+      // Initialize the cache after database is ready
+      await initializeCache();
+
+      return true;
+    } catch (error) {
+      console.error("Error initializing database:", error);
+      // Reset promise to allow retry
+      dbInitializationPromise = null;
+      throw error;
+    }
+  })();
+
+  return dbInitializationPromise;
+};
+
+// Initialize the conversion factors cache safely
+const initializeCache = async () => {
+  try {
+    // Ensure database is initialized first
+    if (!isDbInitialized) {
+      await initializeDatabase();
+    }
+
+    console.log("Initializing conversion factor cache...");
+
+    // Use a timeout to prevent hanging
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Cache initialization timeout")), 10000));
+
+    const initialization = Promise.race([
+      (async () => {
+        try {
+          cachedConversionFactors.broilerMeat = await dbService.getBroilerMeatConversionFactor();
+          cachedConversionFactors.countryChickenMeat = await dbService.getCountryChickenMeatConversionFactor();
+          cachedConversionFactors.broilerWithSkin = await getBroilerWithSkinConversionFactorInternal();
+          cachedConversionFactors.broilerWithoutSkin = await getBroilerWithoutSkinConversionFactorInternal();
+          cachedConversionFactors.countryWithSkin = await getCountryWithSkinConversionFactorInternal();
+          cachedConversionFactors.countryWithoutSkin = await getCountryWithoutSkinConversionFactorInternal();
+          cachedConversionFactors.lastUpdated = Date.now();
+
+          console.log("Conversion factor cache initialized successfully");
+        } catch (error) {
+          console.warn("Error loading some conversion factors, using defaults:", error);
+          // Set default values on error
+          setDefaultCacheValues();
+        }
+      })(),
+      timeout,
+    ]);
+
+    await initialization;
+  } catch (error) {
+    console.error("Error initializing conversion factor cache:", error);
+    // Set default values on error
+    setDefaultCacheValues();
+  }
+};
+
+// Helper function to set default cache values
+const setDefaultCacheValues = () => {
+  cachedConversionFactors.broilerMeat = 1.45;
+  cachedConversionFactors.countryChickenMeat = 1.65;
+  cachedConversionFactors.broilerWithSkin = 1.25;
+  cachedConversionFactors.broilerWithoutSkin = 1.35;
+  cachedConversionFactors.countryWithSkin = 1.45;
+  cachedConversionFactors.countryWithoutSkin = 1.55;
+  cachedConversionFactors.lastUpdated = Date.now();
+};
+
+// Reset the cache after a certain time
+const resetCacheIfNeeded = async () => {
+  const cacheLifetime = 5 * 60 * 1000; // 5 minutes
+  if (!cachedConversionFactors.lastUpdated || Date.now() - cachedConversionFactors.lastUpdated > cacheLifetime) {
+    await initializeCache();
+  }
+};
+
+// Internal helper functions for getting conversion factors
+const getBroilerWithSkinConversionFactorInternal = async () => {
+  try {
+    const factor = await getConversionFactorValue("broilerWithSkinConversion");
+    return factor;
+  } catch (error) {
+    console.warn("Error getting broiler with skin conversion factor:", error);
+    return 1.25; // Default value
+  }
+};
+
+const getBroilerWithoutSkinConversionFactorInternal = async () => {
+  try {
+    const factor = await getConversionFactorValue("broilerWithoutSkinConversion");
+    return factor;
+  } catch (error) {
+    console.warn("Error getting broiler without skin conversion factor:", error);
+    return 1.35; // Default value
+  }
+};
+
+const getCountryWithSkinConversionFactorInternal = async () => {
+  try {
+    const factor = await getConversionFactorValue("countryWithSkinConversion");
+    return factor;
+  } catch (error) {
+    console.warn("Error getting country with skin conversion factor:", error);
+    return 1.45; // Default value
+  }
+};
+
+const getCountryWithoutSkinConversionFactorInternal = async () => {
+  try {
+    const factor = await getConversionFactorValue("countryWithoutSkinConversion");
+    return factor;
+  } catch (error) {
+    console.warn("Error getting country without skin conversion factor:", error);
+    return 1.55; // Default value
+  }
+};
 
 // Function to get all conversion factors
-export const getConversionFactors = () => {
-  try {
-    const factors = localStorage.getItem(STORAGE_KEYS.CONVERSION_FACTORS);
-    if (!factors) {
-      // Initialize with defaults if none exist
-      localStorage.setItem(STORAGE_KEYS.CONVERSION_FACTORS, JSON.stringify(DEFAULT_CONVERSION_FACTORS));
-      return DEFAULT_CONVERSION_FACTORS;
-    }
-    return JSON.parse(factors);
-  } catch (error) {
-    console.error("Error getting conversion factors:", error);
-    return DEFAULT_CONVERSION_FACTORS;
-  }
+export const getConversionFactors = async () => {
+  return await dbService.getConversionFactors();
 };
 
 // Function to get conversion factors by category
-export const getConversionFactorsByCategory = (category) => {
-  const allFactors = getConversionFactors();
-  return allFactors.filter((factor) => factor.category === category);
+export const getConversionFactorsByCategory = async (category) => {
+  return await dbService.getConversionFactorsByCategory(category);
 };
 
 // Function to get a specific conversion factor by ID
-export const getConversionFactorById = (id) => {
-  const factors = getConversionFactors();
-  const factor = factors.find((f) => f.id === id);
-  return factor || null;
+export const getConversionFactorById = async (id) => {
+  return await dbService.getConversionFactorById(id);
 };
 
 // Function to get conversion factor value by ID
-export const getConversionFactorValue = (id) => {
-  const factor = getConversionFactorById(id);
-
-  // Default values if factor not found
-  const defaults = {
-    broilerMeatConversion: 1.45,
-    broilerWithSkinConversion: 1.25,
-    broilerWithoutSkinConversion: 1.35,
-    countryMeatConversion: 1.65,
-    countryWithSkinConversion: 1.45,
-    countryWithoutSkinConversion: 1.55,
-  };
-
-  return factor ? factor.value : defaults[id] || 1.0;
-};
-
-// Update a specific conversion factor
-export const updateConversionFactor = (id, newValue, modifiedBy = null, notes = null) => {
+export const getConversionFactorValue = async (id) => {
   try {
-    const factors = getConversionFactors();
-    const factorIndex = factors.findIndex((f) => f.id === id);
+    // Ensure database is initialized
+    await initializeDatabase();
 
-    if (factorIndex === -1) {
-      console.error(`Conversion factor with id ${id} not found`);
-      return false;
-    }
+    const factor = await dbService.getConversionFactorById(id);
 
-    const factor = factors[factorIndex];
-
-    // Only update if the value has changed
-    if (factor.value === newValue) {
-      return true; // No change needed
-    }
-
-    // Add current value to history before updating
-    const historicalEntry = {
-      value: factor.value,
-      timestamp: factor.updatedAt,
-      modifiedBy: factor.lastModifiedBy || "System",
-      notes: factor.lastModifiedNotes || "Initial value",
+    // Default values if factor not found
+    const defaults = {
+      broilerMeatConversion: 1.45,
+      broilerWithSkinConversion: 1.25,
+      broilerWithoutSkinConversion: 1.35,
+      countryMeatConversion: 1.65,
+      countryWithSkinConversion: 1.45,
+      countryWithoutSkinConversion: 1.55,
     };
 
-    // Create updated factor
-    const updatedFactor = {
-      ...factor,
-      value: newValue,
-      updatedAt: new Date().toISOString(),
-      lastModifiedBy: modifiedBy,
-      lastModifiedNotes: notes,
-      history: [historicalEntry, ...factor.history],
-    };
-
-    // Update the factors array
-    factors[factorIndex] = updatedFactor;
-
-    // Save to localStorage
-    localStorage.setItem(STORAGE_KEYS.CONVERSION_FACTORS, JSON.stringify(factors));
-
-    return true;
+    return factor ? factor.value : defaults[id] || 1.0;
   } catch (error) {
-    console.error(`Error updating conversion factor ${id}:`, error);
-    return false;
+    console.error(`Error getting conversion factor ${id}:`, error);
+    // Return default values
+    const defaults = {
+      broilerMeatConversion: 1.45,
+      broilerWithSkinConversion: 1.25,
+      broilerWithoutSkinConversion: 1.35,
+      countryMeatConversion: 1.65,
+      countryWithSkinConversion: 1.45,
+      countryWithoutSkinConversion: 1.55,
+    };
+    return defaults[id] || 1.0;
   }
 };
 
+// Update a specific conversion factor
+export const updateConversionFactor = async (id, newValue, modifiedBy = null, notes = null) => {
+  const result = await dbService.updateConversionFactor(id, newValue, modifiedBy, notes);
+  // Clear cache after updates
+  cachedConversionFactors.lastUpdated = null;
+  return result;
+};
+
 // Update multiple conversion factors at once
-export const updateConversionFactors = (updates, modifiedBy = null, notes = null) => {
+export const updateConversionFactors = async (updates, modifiedBy = null, notes = null) => {
   try {
     let anyUpdated = false;
 
     // Process each update
     for (const [id, newValue] of Object.entries(updates)) {
-      const updated = updateConversionFactor(id, newValue, modifiedBy, notes);
+      const updated = await updateConversionFactor(id, newValue, modifiedBy, notes);
       if (updated) {
         anyUpdated = true;
       }
@@ -194,333 +253,402 @@ export const updateConversionFactors = (updates, modifiedBy = null, notes = null
 };
 
 // Get all conversion factor history (for reporting)
-export const getAllConversionFactorHistory = () => {
-  const factors = getConversionFactors();
-
-  // Create a flat history array with factor identification
-  const history = factors.flatMap((factor) => {
-    // Create an entry for the current value
-    const currentEntry = {
-      id: factor.id,
-      name: factor.name,
-      value: factor.value,
-      timestamp: factor.updatedAt,
-      modifiedBy: factor.lastModifiedBy || "System",
-      notes: factor.lastModifiedNotes || "Initial value",
-      isCurrent: true,
-      category: factor.category,
-    };
-
-    // Map history entries
-    const historyEntries = factor.history.map((entry) => ({
-      id: factor.id,
-      name: factor.name,
-      value: entry.value,
-      timestamp: entry.timestamp,
-      modifiedBy: entry.modifiedBy || "System",
-      notes: entry.notes || "",
-      isCurrent: false,
-      category: factor.category,
-    }));
-
-    return [currentEntry, ...historyEntries];
-  });
-
-  // Sort by timestamp, most recent first
-  return history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+export const getAllConversionFactorHistory = async () => {
+  return await dbService.getAllConversionFactorHistory();
 };
 
-// Helper functions for each conversion factor
-export const getBroilerMeatConversionFactor = () => {
-  return getConversionFactorValue("broilerMeatConversion");
+// Modified public helper functions for each conversion factor
+export const getBroilerMeatConversionFactor = async () => {
+  try {
+    // Ensure database is initialized
+    await initializeDatabase();
+    await resetCacheIfNeeded();
+    return cachedConversionFactors.broilerMeat;
+  } catch (error) {
+    console.error("Error getting broiler meat conversion factor:", error);
+    return 1.45; // Default fallback
+  }
 };
 
-export const getBroilerWithSkinConversionFactor = () => {
-  return getConversionFactorValue("broilerWithSkinConversion");
+export const getBroilerWithSkinConversionFactor = async () => {
+  try {
+    await initializeDatabase();
+    await resetCacheIfNeeded();
+    return cachedConversionFactors.broilerWithSkin;
+  } catch (error) {
+    console.error("Error getting broiler with skin conversion factor:", error);
+    return 1.25; // Default fallback
+  }
 };
 
-export const getBroilerWithoutSkinConversionFactor = () => {
-  return getConversionFactorValue("broilerWithoutSkinConversion");
+export const getBroilerWithoutSkinConversionFactor = async () => {
+  try {
+    await initializeDatabase();
+    await resetCacheIfNeeded();
+    return cachedConversionFactors.broilerWithoutSkin;
+  } catch (error) {
+    console.error("Error getting broiler without skin conversion factor:", error);
+    return 1.35; // Default fallback
+  }
 };
 
-export const getCountryChickenMeatConversionFactor = () => {
-  return getConversionFactorValue("countryMeatConversion");
+export const getCountryChickenMeatConversionFactor = async () => {
+  try {
+    await initializeDatabase();
+    await resetCacheIfNeeded();
+    return cachedConversionFactors.countryChickenMeat;
+  } catch (error) {
+    console.error("Error getting country chicken conversion factor:", error);
+    return 1.65; // Default fallback
+  }
 };
 
-export const getCountryWithSkinConversionFactor = () => {
-  return getConversionFactorValue("countryWithSkinConversion");
+export const getCountryWithSkinConversionFactor = async () => {
+  try {
+    await initializeDatabase();
+    await resetCacheIfNeeded();
+    return cachedConversionFactors.countryWithSkin;
+  } catch (error) {
+    console.error("Error getting country with skin conversion factor:", error);
+    return 1.45; // Default fallback
+  }
 };
 
-export const getCountryWithoutSkinConversionFactor = () => {
-  return getConversionFactorValue("countryWithoutSkinConversion");
+export const getCountryWithoutSkinConversionFactor = async () => {
+  try {
+    await initializeDatabase();
+    await resetCacheIfNeeded();
+    return cachedConversionFactors.countryWithoutSkin;
+  } catch (error) {
+    console.error("Error getting country without skin conversion factor:", error);
+    return 1.55; // Default fallback
+  }
+};
+
+// For backwards compatibility - sync versions that use cached values
+// These should be used carefully and only in places where async calls
+// would be too cumbersome to implement
+export const getBroilerMeatConversionFactorSync = () => {
+  return cachedConversionFactors.broilerMeat || 1.45;
+};
+
+export const getCountryChickenMeatConversionFactorSync = () => {
+  return cachedConversionFactors.countryChickenMeat || 1.65;
+};
+
+export const getBroilerWithSkinConversionFactorSync = () => {
+  return cachedConversionFactors.broilerWithSkin || 1.25;
+};
+
+export const getBroilerWithoutSkinConversionFactorSync = () => {
+  return cachedConversionFactors.broilerWithoutSkin || 1.35;
+};
+
+export const getCountryWithSkinConversionFactorSync = () => {
+  return cachedConversionFactors.countryWithSkin || 1.45;
+};
+
+export const getCountryWithoutSkinConversionFactorSync = () => {
+  return cachedConversionFactors.countryWithoutSkin || 1.55;
 };
 
 // For backwards compatibility
-export const getConversionRates = () => {
+export const getConversionRates = async () => {
+  const broilerFactor = await getBroilerMeatConversionFactor();
+  const countryFactor = await getCountryChickenMeatConversionFactor();
+
   return {
-    broilerMeatConversion: getBroilerMeatConversionFactor(),
-    countryChickenMeatConversion: getCountryChickenMeatConversionFactor(),
+    broilerMeatConversion: broilerFactor,
+    countryChickenMeatConversion: countryFactor,
   };
 };
 
 // For backwards compatibility
-export const saveConversionRates = (rates, modifiedBy = null, notes = null) => {
-  return updateConversionFactors(rates, modifiedBy, notes);
+export const saveConversionRates = async (rates, modifiedBy = null, notes = null) => {
+  return await updateConversionFactors(rates, modifiedBy, notes);
 };
 
 // For backwards compatibility
-export const getConversionRatesHistory = () => {
-  return getAllConversionFactorHistory();
+export const getConversionRatesHistory = async () => {
+  return await getAllConversionFactorHistory();
 };
 
-// Initialize the conversion factors if they don't exist
-export const initializeConversionFactors = () => {
-  const factors = localStorage.getItem(STORAGE_KEYS.CONVERSION_FACTORS);
-  if (!factors) {
-    localStorage.setItem(STORAGE_KEYS.CONVERSION_FACTORS, JSON.stringify(DEFAULT_CONVERSION_FACTORS));
-  }
+// Initialize the conversion factors
+export const initializeConversionFactors = async () => {
+  return await dbService.initializeConversionFactors();
 };
 
 // For backwards compatibility
-export const MEAT_CONVERSION_FACTOR = getBroilerMeatConversionFactor();
-export const COUNTRY_MEAT_CONVERSION_FACTOR = getCountryChickenMeatConversionFactor();
+export const MEAT_CONVERSION_FACTOR = 1.45; // Default value
+export const COUNTRY_MEAT_CONVERSION_FACTOR = 1.65; // Default value
 
 // Daily Setup Functions
-export const saveDailySetup = (setupData) => {
-  const setupWithMeta = {
-    ...setupData,
-    hasClosedDay: false,
-    date: setupData.date || new Date().toISOString(),
-  };
-  localStorage.setItem(STORAGE_KEYS.DAILY_SETUP, JSON.stringify(setupWithMeta));
-  return setupWithMeta;
+export const saveDailySetup = async (setupData) => {
+  return await dbService.saveDailySetup(setupData);
 };
 
-export const getDailySetup = () => {
-  try {
-    const setup = localStorage.getItem(STORAGE_KEYS.DAILY_SETUP);
-    return setup ? JSON.parse(setup) : null;
-  } catch (error) {
-    console.error("Error parsing daily setup from localStorage:", error);
-    return null;
-  }
+export const getDailySetup = async () => {
+  return await dbService.getDailySetup();
 };
 
-export const isDaySetupValid = (currentDate) => {
-  try {
-    const setup = getDailySetup();
-    if (!setup) return false;
-
-    // Compare only the date part (yyyy-mm-dd)
-    const setupDate = new Date(setup.date).toISOString().split("T")[0];
-    const today = currentDate.toISOString().split("T")[0];
-
-    return setupDate === today;
-  } catch (error) {
-    console.error("Error checking day setup validity:", error);
-    return false;
-  }
+export const isDaySetupValid = async (currentDate) => {
+  return await dbService.isDaySetupValid(currentDate);
 };
 
 // Bills Functions
-export const getBills = () => {
+export const getBills = async () => {
+  return await dbService.getBills();
+};
+
+export const getBillsForCurrentDay = async () => {
+  return await dbService.getBillsForCurrentDay();
+};
+
+export const saveBills = async (bills) => {
   try {
-    const bills = localStorage.getItem(STORAGE_KEYS.BILLS);
-    return bills ? JSON.parse(bills) : [];
+    // Clear existing bills and save new ones
+    await dbService.clearStore(dbService.STORES.BILLS);
+
+    for (const bill of bills) {
+      await dbService.addItem(dbService.STORES.BILLS, bill);
+    }
+
+    return bills;
   } catch (error) {
-    console.error("Error parsing bills from localStorage:", error);
+    console.error("Error saving bills:", error);
     return [];
   }
 };
 
-export const getBillsForCurrentDay = () => {
-  try {
-    const bills = getBills();
-    const setup = getDailySetup();
-
-    if (!setup) return bills; // If no setup, return all bills
-
-    const setupDate = new Date(setup.date).toISOString().split("T")[0];
-
-    return bills.filter((bill) => {
-      const billDate = new Date(bill.timestamp).toISOString().split("T")[0];
-      return billDate === setupDate;
-    });
-  } catch (error) {
-    console.error("Error filtering bills for current day:", error);
-    return [];
-  }
+export const addBill = async (billData) => {
+  return await dbService.addBill(billData);
 };
 
-export const saveBills = (bills) => {
-  localStorage.setItem(STORAGE_KEYS.BILLS, JSON.stringify(bills));
-  return bills;
+export const updateBill = async (updatedBill) => {
+  return await dbService.updateBill(updatedBill);
 };
 
-export const addBill = (billData) => {
-  const bills = getBills();
-  const newBill = {
-    ...billData,
-    id: Date.now(),
-    billNumber: `BILL-${Date.now()}`,
-    timestamp: new Date().toISOString(),
-  };
-  const updatedBills = [newBill, ...bills];
-  saveBills(updatedBills);
-  return newBill;
-};
-
-export const updateBill = (updatedBill) => {
-  const bills = getBills();
-  const updatedBills = bills.map((bill) => (bill.id === updatedBill.id ? { ...bill, ...updatedBill } : bill));
-  saveBills(updatedBills);
-  return updatedBills;
-};
-
-export const deleteBill = (billId) => {
-  const bills = getBills();
-  const updatedBills = bills.filter((bill) => bill.id !== billId);
-  saveBills(updatedBills);
-  return updatedBills;
+export const deleteBill = async (billId) => {
+  return await dbService.deleteBill(billId);
 };
 
 // Products Functions
-export const getProducts = () => {
-  const products = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-  return products ? JSON.parse(products) : [];
+export const getProducts = async () => {
+  return await dbService.getProducts();
 };
 
-export const saveProducts = (products) => {
-  localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
-  return products;
+export const saveProducts = async (products) => {
+  try {
+    await dbService.clearStore(dbService.STORES.PRODUCTS);
+
+    for (const product of products) {
+      await dbService.addItem(dbService.STORES.PRODUCTS, product);
+    }
+
+    return products;
+  } catch (error) {
+    console.error("Error saving products:", error);
+    return [];
+  }
 };
 
-export const addProduct = (productData) => {
-  const products = getProducts();
-  const newProduct = {
-    ...productData,
-    id: Date.now(),
-    createdAt: new Date().toISOString(),
-  };
-  const updatedProducts = [...products, newProduct];
-  saveProducts(updatedProducts);
-  return newProduct;
+export const addProduct = async (productData) => {
+  return await dbService.addProduct(productData);
 };
 
-export const updateProduct = (updatedProduct) => {
-  const products = getProducts();
-  const updatedProducts = products.map((product) => (product.id === updatedProduct.id ? { ...product, ...updatedProduct } : product));
-  saveProducts(updatedProducts);
-  return updatedProducts;
+export const updateProduct = async (updatedProduct) => {
+  return await dbService.updateProduct(updatedProduct);
 };
 
 // Users Functions
-export const getUsers = () => {
-  const users = localStorage.getItem(STORAGE_KEYS.USERS);
-  return users ? JSON.parse(users) : [];
+export const getUsers = async () => {
+  return await dbService.getUsers();
 };
 
-export const saveUsers = (users) => {
-  localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-  return users;
+export const saveUsers = async (users) => {
+  try {
+    await dbService.clearStore(dbService.STORES.USERS);
+
+    for (const user of users) {
+      await dbService.addItem(dbService.STORES.USERS, user);
+    }
+
+    return users;
+  } catch (error) {
+    console.error("Error saving users:", error);
+    return [];
+  }
+};
+
+export const addUser = async (userData) => {
+  return await dbService.addUser(userData);
+};
+
+export const getUserByUsername = async (username) => {
+  return await dbService.getUserByUsername(username);
 };
 
 // Daily Closing Functions
-export const saveClosedDay = (dayData) => {
-  // localStorage.setItem(STORAGE_KEYS.CLOSED_DAY, JSON.stringify(dayData));
-  localStorage.setItem(
-    STORAGE_KEYS.CLOSED_DAY,
-    JSON.stringify({
-      date: dayData.date,
-      setup: getDailySetup(),
-      bills: getBills(),
-      closingData: dayData,
-    })
-  );
+export const saveClosedDay = async (dayData) => {
+  // Legacy function - now handled internally by saveDailyClosing
+  return await saveDailyClosing(dayData);
 };
 
-export const getClosedDay = () => {
+export const getClosedDay = async () => {
+  return await dbService.getClosedDay();
+};
+
+export const clearClosedDay = async () => {
+  return await dbService.clearClosedDay();
+};
+
+export const saveDailyClosing = async (closingData) => {
+  return await dbService.saveDailyClosing(closingData);
+};
+
+export const getDailyClosings = async () => {
+  return await dbService.getDailyClosings();
+};
+
+// Clear Functions
+export const clearDaySetup = async () => {
+  return await dbService.clearDaySetup();
+};
+
+export const clearAllData = async () => {
+  return await dbService.clearAllData();
+};
+
+// Function to start a new day setup while preserving reference to previous data
+export const startNewDaySetup = async () => {
+  return await dbService.startNewDaySetup();
+};
+
+// Regular Customers Functions
+export const getRegularCustomers = async () => {
+  return await dbService.getRegularCustomers();
+};
+
+export const addRegularCustomer = async (customerData) => {
+  return await dbService.addRegularCustomer(customerData);
+};
+
+export const updateRegularCustomer = async (updatedCustomer) => {
+  return await dbService.updateRegularCustomer(updatedCustomer);
+};
+
+export const deleteRegularCustomer = async (customerId) => {
+  return await dbService.deleteRegularCustomer(customerId);
+};
+
+// Price History Functions
+export const savePriceHistory = async (priceRecord) => {
+  return await dbService.savePriceHistory(priceRecord);
+};
+
+export const getPriceHistory = async () => {
+  return await dbService.getPriceHistory();
+};
+
+// Expense Categories Functions
+export const getExpenseCategories = async () => {
   try {
-    const closedDay = localStorage.getItem(STORAGE_KEYS.CLOSED_DAY);
-    return closedDay ? JSON.parse(closedDay) : null;
+    return await dbService.getAllItems(dbService.STORES.EXPENSE_CATEGORIES);
   } catch (error) {
-    console.error("Error getting closed day data:", error);
+    console.error("Error getting expense categories:", error);
+    return [];
+  }
+};
+
+export const saveExpenseCategories = async (categories) => {
+  try {
+    await dbService.clearStore(dbService.STORES.EXPENSE_CATEGORIES);
+
+    for (const category of categories) {
+      await dbService.addItem(dbService.STORES.EXPENSE_CATEGORIES, category);
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error saving expense categories:", error);
+    return false;
+  }
+};
+
+export const getExpenseCategoryById = async (categoryId) => {
+  try {
+    return await dbService.getItemByKey(dbService.STORES.EXPENSE_CATEGORIES, categoryId);
+  } catch (error) {
+    console.error("Error getting expense category:", error);
     return null;
   }
 };
 
-export const clearClosedDay = () => {
-  localStorage.removeItem(STORAGE_KEYS.CLOSED_DAY);
-};
-
-export const saveDailyClosing = (closingData) => {
+// Expenses Functions
+export const getExpenses = async () => {
   try {
-    const closings = getDailyClosings();
-    const updatedClosings = [closingData, ...closings];
-    localStorage.setItem(STORAGE_KEYS.DAILY_CLOSINGS, JSON.stringify(updatedClosings));
-    // Also save as the current closed day
-    saveClosedDay(closingData);
-    return true;
+    return await dbService.getAllItems(dbService.STORES.EXPENSES);
   } catch (error) {
-    console.error("Error saving daily closing:", error);
-    return false;
-  }
-};
-
-export const getDailyClosings = () => {
-  try {
-    const closings = localStorage.getItem(STORAGE_KEYS.DAILY_CLOSINGS);
-    return closings ? JSON.parse(closings) : [];
-  } catch (error) {
-    console.error("Error getting daily closings:", error);
+    console.error("Error getting expenses:", error);
     return [];
   }
 };
 
-// Clear Functions
-export const clearDaySetup = () => {
+export const saveExpenses = async (expenses) => {
   try {
-    localStorage.removeItem(STORAGE_KEYS.DAILY_SETUP);
+    await dbService.clearStore(dbService.STORES.EXPENSES);
+
+    for (const expense of expenses) {
+      await dbService.addItem(dbService.STORES.EXPENSES, expense);
+    }
+
     return true;
   } catch (error) {
-    console.error("Error clearing daily setup:", error);
+    console.error("Error saving expenses:", error);
     return false;
   }
 };
 
-export const clearAllData = () => {
-  Object.values(STORAGE_KEYS).forEach((key) => {
-    localStorage.removeItem(key);
-  });
+export const addExpense = async (expenseData) => {
+  try {
+    const newExpense = {
+      ...expenseData,
+      id: expenseData.id || Date.now(),
+      timestamp: expenseData.timestamp || new Date().toISOString(),
+    };
+
+    await dbService.addItem(dbService.STORES.EXPENSES, newExpense);
+    return newExpense;
+  } catch (error) {
+    console.error("Error adding expense:", error);
+    return null;
+  }
 };
 
-// Function to start a new day setup while preserving reference to previous data
-export const startNewDaySetup = () => {
+export const getExpensesForDay = async (date) => {
   try {
-    // We save the current setup and bills before clearing
-    const currentSetup = getDailySetup();
-    const currentBills = getBills();
+    const expenses = await getExpenses();
+    const targetDate = new Date(date).toISOString().split("T")[0];
 
-    if (currentSetup && currentBills.length > 0) {
-      // Only save if we have data to save
-      localStorage.setItem(
-        STORAGE_KEYS.CLOSED_DAY,
-        JSON.stringify({
-          date: currentSetup.date,
-          setup: currentSetup,
-          bills: currentBills,
-        })
-      );
-    }
-
-    // Clear current setup AND bills
-    localStorage.removeItem(STORAGE_KEYS.DAILY_SETUP);
-    localStorage.removeItem(STORAGE_KEYS.BILLS);
-
-    return true;
+    return expenses.filter((expense) => {
+      const expenseDate = new Date(expense.timestamp).toISOString().split("T")[0];
+      return expenseDate === targetDate;
+    });
   } catch (error) {
-    console.error("Error starting new day setup:", error);
-    return false;
+    console.error("Error filtering expenses for day:", error);
+    return [];
+  }
+};
+
+export const getExpensesForCurrentDay = async () => {
+  try {
+    const setup = await getDailySetup();
+    if (!setup) return [];
+
+    return await getExpensesForDay(setup.date);
+  } catch (error) {
+    console.error("Error getting expenses for current day:", error);
+    return [];
   }
 };
 
@@ -531,12 +659,12 @@ export const isDifferentDay = (date1, date2) => {
   return d1.getDate() !== d2.getDate() || d1.getMonth() !== d2.getMonth() || d1.getFullYear() !== d2.getFullYear();
 };
 
-export const checkNeedsDailySetup = () => {
-  const setup = getDailySetup();
+export const checkNeedsDailySetup = async () => {
+  const setup = await getDailySetup();
   if (!setup) return true;
 
   // If closed day exists and it's not a new day, don't need setup
-  const closedDay = getClosedDay();
+  const closedDay = await getClosedDay();
   if (closedDay && !isDifferentDay(closedDay.date, new Date())) {
     return false;
   }
@@ -556,101 +684,23 @@ export const formatDate = (dateString) => {
 };
 
 // Country Chicken Utility Functions
-export const getBroilerBills = () => {
-  return getBills().filter((bill) => !bill.chickenType || bill.chickenType === "broiler");
+export const getBroilerBills = async () => {
+  const bills = await getBills();
+  return bills.filter((bill) => !bill.chickenType || bill.chickenType === "broiler");
 };
 
-export const getCountryChickenBills = () => {
-  return getBills().filter((bill) => bill.chickenType === "country");
+export const getCountryChickenBills = async () => {
+  const bills = await getBills();
+  return bills.filter((bill) => bill.chickenType === "country");
 };
 
-// Expense Categories Functions
-export const getExpenseCategories = () => {
+// Add this function to be called when the app starts
+export const ensureStorageInitialized = async () => {
   try {
-    const categories = localStorage.getItem(STORAGE_KEYS.EXPENSE_CATEGORIES);
-    return categories ? JSON.parse(categories) : [];
-  } catch (error) {
-    console.error("Error getting expense categories:", error);
-    return [];
-  }
-};
-
-export const saveExpenseCategories = (categories) => {
-  try {
-    localStorage.setItem(STORAGE_KEYS.EXPENSE_CATEGORIES, JSON.stringify(categories));
+    await initializeDatabase();
     return true;
   } catch (error) {
-    console.error("Error saving expense categories:", error);
+    console.error("Failed to initialize storage:", error);
     return false;
-  }
-};
-
-export const getExpenseCategoryById = (categoryId) => {
-  const categories = getExpenseCategories();
-  return categories.find((category) => category.id === categoryId);
-};
-
-// Expenses Functions
-export const getExpenses = () => {
-  try {
-    const expenses = localStorage.getItem(STORAGE_KEYS.EXPENSES);
-    return expenses ? JSON.parse(expenses) : [];
-  } catch (error) {
-    console.error("Error getting expenses:", error);
-    return [];
-  }
-};
-
-export const saveExpenses = (expenses) => {
-  try {
-    localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
-    return true;
-  } catch (error) {
-    console.error("Error saving expenses:", error);
-    return false;
-  }
-};
-
-export const addExpense = (expenseData) => {
-  try {
-    const expenses = getExpenses();
-    const newExpense = {
-      ...expenseData,
-      id: Date.now(),
-      timestamp: new Date().toISOString(),
-    };
-    const updatedExpenses = [...expenses, newExpense];
-    saveExpenses(updatedExpenses);
-    return newExpense;
-  } catch (error) {
-    console.error("Error adding expense:", error);
-    return null;
-  }
-};
-
-export const getExpensesForDay = (date) => {
-  try {
-    const expenses = getExpenses();
-    const targetDate = new Date(date).toISOString().split("T")[0];
-
-    return expenses.filter((expense) => {
-      const expenseDate = new Date(expense.timestamp).toISOString().split("T")[0];
-      return expenseDate === targetDate;
-    });
-  } catch (error) {
-    console.error("Error filtering expenses for day:", error);
-    return [];
-  }
-};
-
-export const getExpensesForCurrentDay = () => {
-  try {
-    const setup = getDailySetup();
-    if (!setup) return [];
-
-    return getExpensesForDay(setup.date);
-  } catch (error) {
-    console.error("Error getting expenses for current day:", error);
-    return [];
   }
 };

@@ -22,8 +22,8 @@ const ExpenseCategoryManagement = () => {
   }, []);
 
   // Load expense categories from storage
-  const loadCategories = () => {
-    const savedCategories = getExpenseCategories();
+  const loadCategories = async () => {
+    const savedCategories = await getExpenseCategories();
     setCategories(savedCategories);
   };
 

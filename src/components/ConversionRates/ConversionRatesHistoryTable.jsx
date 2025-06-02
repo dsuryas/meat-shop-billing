@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../ui
 /**
  * ConversionRatesHistory component displays a table of historical conversion factor changes
  */
-const ConversionRatesHistory = () => {
+const ConversionRatesHistoryTable = () => {
   const [historyData, setHistoryData] = useState([]);
   const [categoryFilter, setCategoryFilter] = useState("all"); // all, broiler, country
   const [typeFilter, setTypeFilter] = useState("all"); // all, meat, withSkin, withoutSkin
@@ -15,8 +15,8 @@ const ConversionRatesHistory = () => {
     loadHistoryData();
   }, []);
 
-  const loadHistoryData = () => {
-    const allHistory = getAllConversionFactorHistory();
+  const loadHistoryData = async () => {
+    const allHistory = await getAllConversionFactorHistory();
     setHistoryData(allHistory);
   };
 
@@ -29,7 +29,7 @@ const ConversionRatesHistory = () => {
   };
 
   // Filter history data based on selected filters
-  const filteredHistory = historyData.filter((entry) => {
+  const filteredHistory = historyData?.filter((entry) => {
     // Apply category filter
     if (categoryFilter !== "all") {
       if (categoryFilter === "broiler" && !entry.id.startsWith("broiler")) return false;
@@ -151,7 +151,7 @@ const ConversionRatesHistory = () => {
           <div className="text-center py-8 text-gray-500">No history data available matching the selected filters.</div>
         )}
 
-        {historyData.length > 0 && (
+        {historyData?.length > 0 && (
           <div className="mt-4 text-xs text-gray-500">
             <p>
               Showing {filteredHistory.length} of {historyData.length} history entries
@@ -166,4 +166,4 @@ const ConversionRatesHistory = () => {
   );
 };
 
-export default ConversionRatesHistory;
+export default ConversionRatesHistoryTable;

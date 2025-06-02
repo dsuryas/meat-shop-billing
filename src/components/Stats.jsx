@@ -1,103 +1,148 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+import PropTypes from "prop-types";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
-import { getDailyClosings, MEAT_CONVERSION_FACTOR } from "../utils/storage";
+import { getDailyClosings } from "../utils/storage";
+
+// Simple, reusable StatsCard component
+const StatsCard = ({ title, value, colorScheme = "blue" }) => (
+  <Card className={`bg-${colorScheme}-50`}>
+    <CardContent className="pt-4 pb-4">
+      <div className={`text-sm text-${colorScheme}-600 mb-1`}>{title}</div>
+      <div className={`text-lg font-bold text-${colorScheme}-700`}>{value}</div>
+    </CardContent>
+  </Card>
+);
+
+StatsCard.propTypes = {
+  title: PropTypes.string.isRequired,
+  value: PropTypes.node.isRequired,
+  colorScheme: PropTypes.string,
+};
 
 const Stats = () => {
-  const closings = getDailyClosings();
+  const [data, setData] = useState({ closings: [], isLoading: true, error: null });
 
+  // Safe conversion to number
+  const safeNum = (value, defaultValue = 0) => (value === null || value === undefined || value === "" || isNaN(Number(value)) ? defaultValue : Number(value));
+
+  // Format date consistently
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    try {
+      return new Date(dateString).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch (error) {
+      return "Invalid Date";
+    }
   };
 
-  const calculateAverages = () => {
-    if (closings.length === 0) return null;
-
-    const totalMeatLossPercent = closings.reduce((sum, c) => {
-      return sum + Number(c.weightLossPercentage || 0);
-    }, 0);
-
-    const totalBirdLossPercent = closings.reduce((sum, c) => {
-      return sum + Number(c.birdLossPercentage || 0);
-    }, 0);
-
-    const totalEarnings = closings.reduce((sum, c) => sum + Number(c.netEarnings || 0), 0);
-    const totalWeightLoss = closings.reduce((sum, c) => sum + Number(c.weightLoss || 0), 0);
-
-    return {
-      weightLossPercent: totalMeatLossPercent / closings.length,
-      birdLossPercent: totalBirdLossPercent / closings.length,
-      avgEarnings: totalEarnings / closings.length,
-      avgWeightLoss: totalWeightLoss / closings.length,
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const result = await Promise.resolve(getDailyClosings());
+        setData({
+          closings: Array.isArray(result) ? result : [],
+          isLoading: false,
+          error: null,
+        });
+      } catch (error) {
+        console.error("Error loading stats data:", error);
+        setData((prev) => ({ ...prev, isLoading: false, error: "Failed to load statistics" }));
+      }
     };
+
+    fetchData();
+  }, []);
+
+  // Calculate statistics from the data
+  const calculateStats = () => {
+    const { closings } = data;
+    if (!closings || closings.length === 0) return { averages: null, extremes: null };
+
+    try {
+      // Calculate averages
+      const sum = (arr, fn) => arr.reduce((total, item) => total + fn(item), 0);
+      const avg = (arr, fn) => sum(arr, fn) / arr.length;
+
+      const averages = {
+        weightLossPercent: avg(closings, (c) => safeNum(c.weightLossPercentage)),
+        avgWeightLoss: avg(closings, (c) => safeNum(c.weightLoss)),
+        avgEarnings: avg(closings, (c) => safeNum(c.netEarnings)),
+      };
+
+      // Safe min/max calculation
+      const findExtreme = (arr, fn, method) => {
+        if (!arr.length) return 0;
+        return Math[method](...arr.map((item) => fn(item)));
+      };
+
+      // Calculate extremes
+      const extremes = {
+        highest: {
+          lossPercent: findExtreme(closings, (c) => safeNum(c.weightLossPercentage), "max"),
+          weightLoss: findExtreme(closings, (c) => safeNum(c.weightLoss), "max"),
+          earnings: findExtreme(closings, (c) => safeNum(c.netEarnings), "max"),
+        },
+        lowest: {
+          lossPercent: findExtreme(closings, (c) => safeNum(c.weightLossPercentage), "min"),
+          weightLoss: findExtreme(closings, (c) => safeNum(c.weightLoss), "min"),
+          earnings: findExtreme(closings, (c) => safeNum(c.netEarnings), "min"),
+        },
+      };
+
+      return { averages, extremes };
+    } catch (error) {
+      console.error("Error calculating statistics:", error);
+      return { averages: null, extremes: null };
+    }
   };
 
-  const getExtremes = () => {
-    if (closings.length === 0) return null;
+  // Get calculated stats
+  const { averages, extremes } = calculateStats();
+  const { closings, isLoading, error } = data;
 
-    const lossPercentages = closings.map((c) => Number(c.weightLossPercentage || 0));
-    const weightLosses = closings.map((c) => Number(c.weightLoss || 0));
-    const earnings = closings.map((c) => Number(c.netEarnings || 0));
+  // Loading state
+  if (isLoading) {
+    return <div className="text-center py-8 text-gray-500">Loading statistics...</div>;
+  }
 
-    return {
-      highest: {
-        lossPercent: Math.max(...lossPercentages),
-        weightLoss: Math.max(...weightLosses),
-        earnings: Math.max(...earnings),
-      },
-      lowest: {
-        lossPercent: Math.min(...lossPercentages),
-        weightLoss: Math.min(...weightLosses),
-        earnings: Math.min(...earnings),
-      },
-    };
-  };
+  // Error state
+  if (error) {
+    return <div className="bg-red-50 p-4 rounded-lg text-red-600">{error}</div>;
+  }
 
-  const averages = calculateAverages();
-  const extremes = getExtremes();
+  // Empty state
+  if (!closings || closings.length === 0) {
+    return <div className="text-center py-8 text-gray-500">No historical data available yet.</div>;
+  }
 
   return (
     <div className="space-y-6">
       {/* Summary Statistics Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        <Card className="bg-blue-50">
-          <CardContent className="pt-4 pb-4">
-            <div className="text-sm text-blue-600 mb-1">Average Weight Loss</div>
-            <div className="text-lg font-bold text-blue-700">
-              {averages?.avgWeightLoss.toFixed(2)}kg ({averages?.weightLossPercent.toFixed(2)}%)
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatsCard
+          title="Average Weight Loss"
+          value={`${averages?.avgWeightLoss.toFixed(2)}kg (${averages?.weightLossPercent.toFixed(2)}%)`}
+          colorScheme="blue"
+        />
 
-        <Card className="bg-amber-50">
-          <CardContent className="pt-4 pb-4">
-            <div className="text-sm text-amber-600 mb-1">Highest Weight Loss</div>
-            <div className="text-lg font-bold text-amber-700">
-              {extremes?.highest.weightLoss.toFixed(2)}kg ({extremes?.highest.lossPercent.toFixed(2)}%)
-            </div>
-          </CardContent>
-        </Card>
+        <StatsCard
+          title="Highest Weight Loss"
+          value={`${extremes?.highest.weightLoss.toFixed(2)}kg (${extremes?.highest.lossPercent.toFixed(2)}%)`}
+          colorScheme="amber"
+        />
 
-        <Card className="bg-green-50">
-          <CardContent className="pt-4 pb-4">
-            <div className="text-sm text-green-600 mb-1">Lowest Weight Loss</div>
-            <div className="text-lg font-bold text-green-700">
-              {extremes?.lowest.weightLoss.toFixed(2)}kg ({extremes?.lowest.lossPercent.toFixed(2)}%)
-            </div>
-          </CardContent>
-        </Card>
+        <StatsCard
+          title="Lowest Weight Loss"
+          value={`${extremes?.lowest.weightLoss.toFixed(2)}kg (${extremes?.lowest.lossPercent.toFixed(2)}%)`}
+          colorScheme="green"
+        />
 
-        <Card className="bg-purple-50">
-          <CardContent className="pt-4 pb-4">
-            <div className="text-sm text-purple-600 mb-1">Average Earnings</div>
-            <div className="text-lg font-bold text-purple-700">₹{averages?.avgEarnings.toFixed(2)}</div>
-          </CardContent>
-        </Card>
+        <StatsCard title="Average Earnings" value={`₹${averages?.avgEarnings.toFixed(2)}`} colorScheme="purple" />
       </div>
 
       <Card>
@@ -109,11 +154,11 @@ const Stats = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock Info</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Weight Loss</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Birds</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Financial</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stock Info</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Weight Loss</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Birds</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Financial</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -121,51 +166,44 @@ const Stats = () => {
                   <tr key={index} className="hover:bg-gray-50">
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">{formatDate(closing.date)}</td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <div>Expected: {Number(closing.expectedStock).toFixed(2)}kg</div>
-                      <div>Actual: {Number(closing.actualStock).toFixed(2)}kg</div>
+                      <div>Expected: {safeNum(closing.expectedStock).toFixed(2)}kg</div>
+                      <div>Actual: {safeNum(closing.actualStock).toFixed(2)}kg</div>
                       <div className="text-xs text-gray-400 mt-1">{closing.estimationMethod === "liveRate" ? "Live weight" : "Meat weight"}</div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-500">
                         <span
                           className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
-                          ${Number(closing.weightLoss) > 0 ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"}`}
+                          ${safeNum(closing.weightLoss) > 0 ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"}`}
                         >
-                          {Number(closing.weightLoss).toFixed(2)}kg
+                          {safeNum(closing.weightLoss).toFixed(2)}kg
                         </span>
-                        <span className="ml-2">({Number(closing.weightLossPercentage).toFixed(2)}%)</span>
+                        <span className="ml-2">({safeNum(closing.weightLossPercentage).toFixed(2)}%)</span>
                       </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <div>Expected: {closing.expectedBirds}</div>
-                      <div>Actual: {closing.actualBirds}</div>
+                      <div>Expected: {safeNum(closing.expectedBirds)}</div>
+                      <div>Actual: {safeNum(closing.actualBirds)}</div>
                       <div className="mt-1">
                         <span
                           className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
-                          ${Number(closing.birdLoss) > 0 ? "bg-orange-100 text-orange-800" : "bg-green-100 text-green-800"}`}
+                          ${safeNum(closing.birdLoss) > 0 ? "bg-orange-100 text-orange-800" : "bg-green-100 text-green-800"}`}
                         >
-                          Loss: {closing.birdLoss} ({closing.birdLossPercentage}%)
+                          Loss: {safeNum(closing.birdLoss)} ({safeNum(closing.birdLossPercentage).toFixed(2)}%)
                         </span>
                       </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       <div className="grid grid-cols-2 gap-x-4 text-sm">
-                        <div>Est: ₹{Number(closing.estimatedEarnings).toFixed(2)}</div>
-                        <div>Act: ₹{Number(closing.actualEarnings).toFixed(2)}</div>
-                        <div>Disc: ₹{Number(closing.totalDiscounts).toFixed(2)}</div>
-                        <div>Exp: ₹{Number(closing.expenses).toFixed(2)}</div>
+                        <div>Est: ₹{safeNum(closing.estimatedEarnings).toFixed(2)}</div>
+                        <div>Act: ₹{safeNum(closing.actualEarnings).toFixed(2)}</div>
+                        <div>Disc: ₹{safeNum(closing.totalDiscounts).toFixed(2)}</div>
+                        <div>Exp: ₹{safeNum(closing.expenses).toFixed(2)}</div>
                       </div>
-                      <div className="mt-1 text-green-600 font-medium border-t border-green-200 pt-1">Net: ₹{Number(closing.netEarnings).toFixed(2)}</div>
+                      <div className="mt-1 text-green-600 font-medium border-t border-green-200 pt-1">Net: ₹{safeNum(closing.netEarnings).toFixed(2)}</div>
                     </td>
                   </tr>
                 ))}
-                {closings.length === 0 && (
-                  <tr>
-                    <td colSpan="5" className="px-4 py-8 text-center text-gray-500">
-                      No data available
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
           </div>
