@@ -5,7 +5,6 @@ import { LogOut, History } from "lucide-react";
 import {
   saveDailySetup,
   getDailySetup,
-  getBills,
   getBillsForCurrentDay,
   addBill,
   updateBill,
@@ -44,6 +43,7 @@ const StaffDashboard = ({ logout }) => {
   const [showHistory, setShowHistory] = useState(false);
   const [selectedHistoricalDay, setSelectedHistoricalDay] = useState(null);
   const [dayIsClosed, setDayIsClosed] = useState(false);
+  const [isLoadingSetup, setIsLoadingSetup] = useState(true);
 
   // Handler functions
   const handleLogout = (e) => {
@@ -70,46 +70,78 @@ const StaffDashboard = ({ logout }) => {
     loadDailyData();
   }, []);
 
-  const loadDailyData = () => {
-    // Always get the most recently closed day data
-    const closedDay = getClosedDay();
-    setClosedDayData(closedDay);
+  const loadDailyData = async () => {
+    setIsLoadingSetup(true);
 
-    // Get the current saved bills
-    const savedBills = getBillsForCurrentDay();
-    setBills(Array.isArray(savedBills) ? savedBills : []);
+    try {
+      console.log("Loading daily data...");
 
-    // Get the daily setup
-    const setup = getDailySetup();
+      // Always get the most recently closed day data
+      const closedDay = await getClosedDay();
+      setClosedDayData(closedDay);
 
-    // Check if we have a valid setup for today
-    if (setup && isDaySetupValid(new Date())) {
-      setDailySetup(setup);
-      setViewingClosedDay(false);
-      setDayIsClosed(isDayClosed(setup));
-    } else if (closedDay) {
-      // If no current setup but we have closed day data, we can view that
-      setViewingClosedDay(true);
-      setDailySetup(closedDay.setup);
-      setBills(closedDay.bills || []);
-      setDayIsClosed(true);
-    } else {
+      // Get the current saved bills
+      const savedBills = await getBillsForCurrentDay();
+      setBills(Array.isArray(savedBills) ? savedBills : []);
+
+      // Get the daily setup
+      const setup = await getDailySetup();
+      console.log("Retrieved daily setup:", setup);
+
+      // Check if we have a valid setup for today
+      const today = new Date();
+      const isSetupValid = setup ? await isDaySetupValid(today) : false;
+
+      console.log("Is setup valid for today?", isSetupValid);
+
+      if (setup && isSetupValid) {
+        console.log("Valid setup found for today");
+        setDailySetup(setup);
+        setViewingClosedDay(false);
+        setDayIsClosed(isDayClosed(setup));
+        setShowSetup(false);
+      } else if (closedDay) {
+        console.log("No valid setup for today, but closed day data exists");
+        // If no current setup but we have closed day data, we can view that
+        setViewingClosedDay(true);
+        setDailySetup(closedDay.setup);
+        setBills(closedDay.bills || []);
+        setDayIsClosed(true);
+        setShowSetup(false);
+      } else {
+        console.log("No valid setup found, showing setup form");
+        // No valid setup for today and no closed day data
+        setDailySetup(null);
+        setViewingClosedDay(false);
+        setDayIsClosed(false);
+        setShowSetup(true); // This is the key fix - always show setup when no valid setup exists
+        setBills([]);
+      }
+    } catch (error) {
+      console.error("Error loading daily data:", error);
+      // On error, show setup form
+      setDailySetup(null);
       setShowSetup(true);
       setBills([]);
       setViewingClosedDay(false);
       setDayIsClosed(false);
+    } finally {
+      setIsLoadingSetup(false);
     }
   };
 
   // Toggle between viewing current day and closed day
-  const toggleDayView = () => {
+  const toggleDayView = async () => {
     if (viewingClosedDay) {
       // Switch to current day view if available
-      const setup = getDailySetup();
-      if (setup && isDaySetupValid(new Date())) {
+      const setup = await getDailySetup();
+      const today = new Date();
+      const isValid = setup ? await isDaySetupValid(today) : false;
+
+      if (setup && isValid) {
         setViewingClosedDay(false);
         setDailySetup(setup);
-        const currentBills = getBillsForCurrentDay();
+        const currentBills = await getBillsForCurrentDay();
         setBills(Array.isArray(currentBills) ? currentBills : []);
         setDayIsClosed(isDayClosed(setup));
       }
@@ -123,26 +155,38 @@ const StaffDashboard = ({ logout }) => {
   };
 
   // Setup handlers
-  const handleSetupComplete = (setupData) => {
-    const savedSetup = saveDailySetup(setupData);
-    setDailySetup(savedSetup);
-    setShowSetup(false);
-    setViewingClosedDay(false);
-    setDayIsClosed(false);
+  const handleSetupComplete = async (setupData) => {
+    try {
+      console.log("Completing daily setup...", setupData);
+      const savedSetup = await saveDailySetup(setupData);
+      setDailySetup(savedSetup);
+      setShowSetup(false);
+      setViewingClosedDay(false);
+      setDayIsClosed(false);
+      console.log("Daily setup completed successfully");
+    } catch (error) {
+      console.error("Error completing daily setup:", error);
+    }
   };
 
   // Handle starting a new day
-  const handleStartNewDay = (selectedDate) => {
-    // Save reference to current data before clearing
-    startNewDaySetup();
+  const handleStartNewDay = async (selectedDate) => {
+    try {
+      console.log("Starting new day setup...");
+      // Save reference to current data before clearing
+      await startNewDaySetup();
 
-    // Clear current setup
-    clearDaySetup();
-    setDailySetup(null);
-    setShowSetup(true);
-    setBills([]);
-    setViewingClosedDay(false);
-    setDayIsClosed(false);
+      // Clear current setup
+      await clearDaySetup();
+      setDailySetup(null);
+      setShowSetup(true);
+      setBills([]);
+      setViewingClosedDay(false);
+      setDayIsClosed(false);
+      console.log("New day setup initiated");
+    } catch (error) {
+      console.error("Error starting new day:", error);
+    }
   };
 
   // Billing option selection handler
@@ -157,31 +201,35 @@ const StaffDashboard = ({ logout }) => {
   };
 
   // Bill generation handler
-  const handleBillGenerated = (billData) => {
-    if (editingBill) {
-      // Update existing bill
-      const updatedBill = {
-        ...editingBill,
-        ...billData,
-        lastModified: new Date().toISOString(),
-      };
-      updateBill(updatedBill);
-      setBills((prev) => prev.map((bill) => (bill.id === updatedBill.id ? updatedBill : bill)));
-    } else {
-      // Add new bill
-      const newBill = {
-        ...billData,
-        billOption: selectedBillingOption,
-        id: Date.now(),
-        billNumber: `BILL-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-      };
-      addBill(newBill);
-      setBills((prev) => [newBill, ...prev]);
+  const handleBillGenerated = async (billData) => {
+    try {
+      if (editingBill) {
+        // Update existing bill
+        const updatedBill = {
+          ...editingBill,
+          ...billData,
+          lastModified: new Date().toISOString(),
+        };
+        await updateBill(updatedBill);
+        setBills((prev) => prev.map((bill) => (bill.id === updatedBill.id ? updatedBill : bill)));
+      } else {
+        // Add new bill
+        const newBill = {
+          ...billData,
+          billOption: selectedBillingOption,
+          id: Date.now(),
+          billNumber: `BILL-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+        };
+        await addBill(newBill);
+        setBills((prev) => [newBill, ...prev]);
+      }
+      setShowBillingForm(false);
+      setSelectedBillingOption(null);
+      setEditingBill(null);
+    } catch (error) {
+      console.error("Error handling bill:", error);
     }
-    setShowBillingForm(false);
-    setSelectedBillingOption(null);
-    setEditingBill(null);
   };
 
   // Edit bill handler
@@ -216,25 +264,29 @@ const StaffDashboard = ({ logout }) => {
 
   // Handle closing the day
   const handleCloseDayConfirmed = async (closingData) => {
-    const saved = await saveDailyClosing(closingData);
-    if (saved) {
-      // Update the closed day data without clearing current setup
-      setClosedDayData({
-        date: closingData.date,
-        setup: dailySetup,
-        bills: bills,
-        closingData: closingData,
-      });
+    try {
+      const saved = await saveDailyClosing(closingData);
+      if (saved) {
+        // Update the closed day data without clearing current setup
+        setClosedDayData({
+          date: closingData.date,
+          setup: dailySetup,
+          bills: bills,
+          closingData: closingData,
+        });
 
-      // Update daily setup to mark as closed
-      const updatedSetup = { ...dailySetup, hasClosedDay: true };
-      saveDailySetup(updatedSetup);
-      setDailySetup(updatedSetup);
+        // Update daily setup to mark as closed
+        const updatedSetup = { ...dailySetup, hasClosedDay: true };
+        await saveDailySetup(updatedSetup);
+        setDailySetup(updatedSetup);
 
-      // Set the day as closed
-      setDayIsClosed(true);
+        // Set the day as closed
+        setDayIsClosed(true);
+      }
+      setShowCloseDayModal(false);
+    } catch (error) {
+      console.error("Error closing day:", error);
     }
-    setShowCloseDayModal(false);
   };
 
   // Get stock calculations
@@ -242,6 +294,29 @@ const StaffDashboard = ({ logout }) => {
 
   // Get sales calculations
   const salesCalculations = calculateSales(bills);
+
+  // Show loading while checking for daily setup
+  if (isLoadingSetup) {
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <div className="bg-white shadow">
+          <div className="p-4 flex justify-between items-center">
+            <h1 className="text-2xl font-bold">Staff Dashboard</h1>
+            <Button variant="outline" onClick={handleLogout}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Logout
+            </Button>
+          </div>
+        </div>
+        <div className="p-6 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading daily setup...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Early return for dashboard with Start Day button when no setup exists
   if (!dailySetup) {
@@ -280,15 +355,17 @@ const StaffDashboard = ({ logout }) => {
           ) : (
             <Card>
               <CardHeader>
-                <CardTitle>Start New Day</CardTitle>
-                <CardDescription>Initialize daily operations by setting up today's rates and stock</CardDescription>
+                <CardTitle>Daily Setup Required</CardTitle>
+                <CardDescription>Please complete the daily setup to start operations</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-center">
-                  <p className="text-gray-500 mb-4">No active daily setup found. Start a new day to begin operations.</p>
+                <div className="text-center py-8">
+                  <p className="text-gray-600 mb-4">No valid daily setup found for today. Please set up the day to begin operations.</p>
                   <div className="flex gap-4 justify-center">
                     <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-48" />
-                    <Button onClick={() => setShowSetup(true)}>Start Day</Button>
+                    <Button onClick={() => setShowSetup(true)} className="bg-blue-600 hover:bg-blue-700">
+                      Start Daily Setup
+                    </Button>
                   </div>
                 </div>
               </CardContent>
